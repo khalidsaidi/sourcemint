@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export PATH="$PATH:$HOME/.foundry/bin"
+
+echo "[pre-commit] forge fmt --check"
+forge fmt --check
+
+echo "[pre-commit] forge test"
+forge test >/dev/null
+
+echo "[pre-commit] OK"

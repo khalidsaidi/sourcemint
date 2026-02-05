@@ -1,0 +1,17 @@
+# Foundry
+cache/
+out/
+broadcast/
+reports/
+
+# Env / secrets
+.env
+
+# OS/editor
+.DS_Store
+.idea/
+*.swp
+
+# Agent workspace (keep README only)
+.ai/*
+!.ai/README.md
