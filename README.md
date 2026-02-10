@@ -38,4 +38,4 @@ Deployment artifacts:
 - `deployments/11155111.json` (auto-written by the script)
 
 ## Deployments
-- Sepolia (11155111): **TBD** (after deploy, update this line with the contract address)
+- Sepolia (11155111): `0x8c2B67EA395824Cc069F5e13b1d80E6016751a4A`
