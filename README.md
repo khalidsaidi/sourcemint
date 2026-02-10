@@ -38,4 +38,6 @@ Deployment artifacts:
 - `deployments/11155111.json` (auto-written by the script)
 
 ## Deployments
-- Sepolia (11155111): `0x8c2B67EA395824Cc069F5e13b1d80E6016751a4A`
+- Base Mainnet (8453): `0x914F6b6a0DaD39A3CB932dcf4D1af885C7c08EeB` (GA)
+  - Verified: https://basescan.org/address/0x914f6b6a0dad39a3cb932dcf4d1af885c7c08eeb#code
+- Sepolia (11155111): `0x8c2B67EA395824Cc069F5e13b1d80E6016751a4A` (testnet)
