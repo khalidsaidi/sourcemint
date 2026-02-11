@@ -53,11 +53,11 @@ steps:
         # Deploy + verify on Base mainnet (chainId 8453).
         # IMPORTANT: do not echo secrets.
         forge script script/DeploySourceMint.s.sol:DeploySourceMint \
-          --rpc-url "${RPC_URL}" \
+          --rpc-url "$${RPC_URL}" \
           --broadcast \
           --verify \
           --chain 8453 \
-          --etherscan-api-key "${ETHERSCAN_API_KEY}" \
+          --etherscan-api-key "$${ETHERSCAN_API_KEY}" \
           -vvvv
 
 options:
