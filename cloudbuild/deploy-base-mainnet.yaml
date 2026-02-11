@@ -23,6 +23,8 @@ steps:
 
   - name: ghcr.io/foundry-rs/foundry:stable
     entrypoint: bash
+    env:
+      - HOME=/tmp
     secretEnv:
       - RPC_URL
       - PRIVATE_KEY

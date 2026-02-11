@@ -11,6 +11,8 @@ steps:
   # Use the official Foundry container to keep CI small and deterministic.
   - name: ghcr.io/foundry-rs/foundry:stable
     entrypoint: bash
+    env:
+      - HOME=/tmp
     args:
       - -lc
       - |
