@@ -15,9 +15,14 @@ steps:
       - -lc
       - |
         set -euo pipefail
-        forge fmt --check
-        forge test -vvv
+        if command -v make >/dev/null 2>&1; then
+          make fmt
+          git diff --exit-code
+          make test
+        else
+          forge fmt --check
+          forge test -vvv
+        fi
 
 options:
   logging: CLOUD_LOGGING_ONLY
-

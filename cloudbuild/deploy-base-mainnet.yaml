@@ -38,8 +38,8 @@ steps:
         GA_ADDRESS="0x914F6b6a0DaD39A3CB932dcf4D1af885C7c08EeB"
 
         if [ "${_ALLOW_REDEPLOY}" != "true" ]; then
-          if [ -f "deployments/8453.json" ] && grep -qi "\"address\"[[:space:]]*:[[:space:]]*\"${GA_ADDRESS}\"" "deployments/8453.json"; then
-            echo "Refusing to redeploy: deployments/8453.json already points to the GA address (${GA_ADDRESS})."
+          if [ -f "deployments/8453.json" ] && grep -qi "\"address\"[[:space:]]*:[[:space:]]*\"$${GA_ADDRESS}\"" "deployments/8453.json"; then
+            echo "Refusing to redeploy: deployments/8453.json already points to the GA address ($${GA_ADDRESS})."
             echo "If you intentionally want to deploy a new contract, re-run the trigger with substitution _ALLOW_REDEPLOY=true."
             exit 1
           fi
@@ -57,4 +57,3 @@ steps:
 
 options:
   logging: CLOUD_LOGGING_ONLY
-
