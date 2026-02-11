@@ -9,12 +9,12 @@ SourceMint (SRCMNT) is an open-source ERC-20 token contract built with Foundry a
 ## Contract
 
 - Base Mainnet (8453): `0x914F6b6a0DaD39A3CB932dcf4D1af885C7c08EeB`
-- BaseScan: https://basescan.org/address/0x914f6b6a0dad39a3cb932dcf4d1af885c7c08eeb#code
+- BaseScan: [https://basescan.org/address/0x914f6b6a0dad39a3cb932dcf4d1af885c7c08eeb#code](https://basescan.org/address/0x914f6b6a0dad39a3cb932dcf4d1af885c7c08eeb#code)
 
 ## Links
 
-- GitHub repository: https://github.com/khalidsaidi/sourcemint
+- GitHub repository: [https://github.com/khalidsaidi/sourcemint](https://github.com/khalidsaidi/sourcemint)
 
 ## Contact
 
-- khalidsaidi66@gmail.com
+- [khalidsaidi66@gmail.com](mailto:khalidsaidi66@gmail.com)
