@@ -1,0 +1,60 @@
+substitutions:
+  # Safety guard: default blocks redeploying if deployments/8453.json already points
+  # at the GA address. Override at trigger-run time with: _ALLOW_REDEPLOY=true
+  _ALLOW_REDEPLOY: "false"
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/sourcemint-prod-260210-28679/secrets/SRCMNT_BASE_RPC_URL/versions/latest
+      env: RPC_URL
+    - versionName: projects/sourcemint-prod-260210-28679/secrets/SRCMNT_BASE_PRIVATE_KEY/versions/latest
+      env: PRIVATE_KEY
+    - versionName: projects/sourcemint-prod-260210-28679/secrets/SRCMNT_ETHERSCAN_API_KEY/versions/latest
+      env: ETHERSCAN_API_KEY
+
+steps:
+  - name: gcr.io/cloud-builders/git
+    entrypoint: bash
+    args:
+      - -lc
+      - |
+        set -euo pipefail
+        git submodule update --init --recursive
+
+  - name: ghcr.io/foundry-rs/foundry:stable
+    entrypoint: bash
+    secretEnv:
+      - RPC_URL
+      - PRIVATE_KEY
+      - ETHERSCAN_API_KEY
+    args:
+      - -lc
+      - |
+        set -euo pipefail
+
+        forge fmt --check
+        forge test -vvv
+
+        GA_ADDRESS="0x914F6b6a0DaD39A3CB932dcf4D1af885C7c08EeB"
+
+        if [ "${_ALLOW_REDEPLOY}" != "true" ]; then
+          if [ -f "deployments/8453.json" ] && grep -qi "\"address\"[[:space:]]*:[[:space:]]*\"${GA_ADDRESS}\"" "deployments/8453.json"; then
+            echo "Refusing to redeploy: deployments/8453.json already points to the GA address (${GA_ADDRESS})."
+            echo "If you intentionally want to deploy a new contract, re-run the trigger with substitution _ALLOW_REDEPLOY=true."
+            exit 1
+          fi
+        fi
+
+        # Deploy + verify on Base mainnet (chainId 8453).
+        # IMPORTANT: do not echo secrets.
+        forge script script/DeploySourceMint.s.sol:DeploySourceMint \
+          --rpc-url "${RPC_URL}" \
+          --broadcast \
+          --verify \
+          --chain 8453 \
+          --etherscan-api-key "${ETHERSCAN_API_KEY}" \
+          -vvvv
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+

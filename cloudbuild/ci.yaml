@@ -1,0 +1,23 @@
+steps:
+  # Cloud Build checks out the repo for you; this ensures submodules are present.
+  - name: gcr.io/cloud-builders/git
+    entrypoint: bash
+    args:
+      - -lc
+      - |
+        set -euo pipefail
+        git submodule update --init --recursive
+
+  # Use the official Foundry container to keep CI small and deterministic.
+  - name: ghcr.io/foundry-rs/foundry:stable
+    entrypoint: bash
+    args:
+      - -lc
+      - |
+        set -euo pipefail
+        forge fmt --check
+        forge test -vvv
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
