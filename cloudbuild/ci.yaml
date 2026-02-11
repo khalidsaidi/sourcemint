@@ -17,6 +17,10 @@ steps:
       - -lc
       - |
         set -euo pipefail
+        WORKDIR="$(mktemp -d /tmp/sourcemint-ci-XXXXXX)"
+        cp -R /workspace/. "$WORKDIR/"
+        cd "$WORKDIR"
+
         if command -v make >/dev/null 2>&1; then
           make fmt
           git diff --exit-code

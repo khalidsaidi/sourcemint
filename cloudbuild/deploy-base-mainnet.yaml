@@ -33,6 +33,9 @@ steps:
       - -lc
       - |
         set -euo pipefail
+        WORKDIR="$(mktemp -d /tmp/sourcemint-deploy-XXXXXX)"
+        cp -R /workspace/. "$WORKDIR/"
+        cd "$WORKDIR"
 
         forge fmt --check
         forge test -vvv
