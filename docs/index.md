@@ -40,15 +40,23 @@ Contract features:
 ## Team / transparency
 
 Maintainer:
-- Khalid Saidi
-  - GitHub: https://github.com/khalidsaidi
+- **Khalid Saidi** — creator/maintainer of SourceMint and this repository.
+  - GitHub profile: https://github.com/khalidsaidi
+
+On-chain provenance (public, verifiable):
+- Base mainnet (chainId 8453) token contract (GA): `0x914F6b6a0DaD39A3CB932dcf4D1af885C7c08EeB`
+  - Verified code: https://basescan.org/address/0x914f6b6a0dad39a3cb932dcf4d1af885c7c08eeb#code
+- Contract creation / deployment tx:
+  - https://basescan.org/tx/0x6b06299804074d1ab8ce78d0c4ce40216e51ac653070cba10714d0fa3b42bbfa
+- Deployer (initial supply recipient at deployment):
+  - https://basescan.org/address/0x497d34b1d0790f374B32467093d303533399c819
 
 ## Official channels
 
 - GitHub repo: https://github.com/khalidsaidi/sourcemint
 - GitHub Discussions: https://github.com/khalidsaidi/sourcemint/discussions
+- GitHub Issues: https://github.com/khalidsaidi/sourcemint/issues
 
 ## Contact
 
 Official email: khalidsaidi66@gmail.com
-
