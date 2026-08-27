@@ -67,6 +67,18 @@ On-chain provenance (public, verifiable):
 - Deployer (initial supply recipient at deployment):
   - https://basescan.org/address/0x497d34b1d0790f374B32467093d303533399c819
 
+## Treasury & distribution
+
+Supply is split across two project-controlled wallets, documented here for transparency:
+
+| Wallet | Address | Balance | Purpose |
+|---|---|---|---|
+| Treasury (deployer) | [`0x497d34b1d0790f374B32467093d303533399c819`](https://basescan.org/address/0x497d34b1d0790f374B32467093d303533399c819) | 900,000 SRCMNT (90%) | Long-term treasury |
+| Rewards | [`0x1af3cBcE941a2AC9D987E853b5385b05c405E16F`](https://basescan.org/address/0x1af3cBcE941a2AC9D987E853b5385b05c405E16F) | 100,000 SRCMNT (10%) | Contributor rewards (see Roadmap) |
+
+- Distribution tx (2026-08-27): [`0xc3f5e0…7979d3`](https://basescan.org/tx/0xc3f5e01e5b6b38b18a8f44943f541118fda201375ca579e0117f4a1ca07979d3)
+- Any future movement from these wallets will be documented on this page.
+
 ## Official channels
 
 - GitHub repo: https://github.com/khalidsaidi/sourcemint
