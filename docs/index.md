@@ -11,6 +11,22 @@ It is designed to be transparent and easy to audit: fixed supply minted at deplo
 
 This project is early-stage and intended for open-source experimentation, developer tooling demos, and community reward prototypes. It is not financial advice.
 
+## Purpose
+
+SourceMint exists to serve as a reference-quality, fully transparent ERC-20 deployment on Base:
+
+- **A learning and tooling reference.** The repository shows a complete, reproducible path from Foundry project to verified mainnet contract: tests, gas snapshots, CI, deployment scripts, and recorded deployment artifacts (`deployments/8453.json`).
+- **A community reward primitive.** SRCMNT is planned as the reward unit for contributions to the SourceMint open-source tooling (documentation, test coverage, deployment tooling improvements), distributed from the deployer treasury as the contributor program launches.
+- **Deliberately trust-minimized.** The contract has no owner, no admin functions, no pause, no fees, and no ability to mint after deployment. What was minted at deployment (1,000,000 SRCMNT) is the supply forever; holders can only reduce it by burning.
+
+## Roadmap
+
+- **Q3 2026** — Publish contributor reward guidelines; begin distributing SRCMNT from the deployer treasury to early contributors.
+- **Q4 2026** — Open GitHub Discussions governance for reward allocation; publish periodic treasury transparency reports on this site.
+- **2027** — Evaluate liquidity provisioning and additional tooling (airdrop scripts, permit-based reward claims) based on community interest.
+
+Progress is tracked publicly in [GitHub Issues](https://github.com/khalidsaidi/sourcemint/issues) and [Discussions](https://github.com/khalidsaidi/sourcemint/discussions).
+
 ## Official contracts
 
 - Base Mainnet (chainId 8453)
@@ -57,6 +73,16 @@ On-chain provenance (public, verifiable):
 - GitHub Discussions: https://github.com/khalidsaidi/sourcemint/discussions
 - GitHub Issues: https://github.com/khalidsaidi/sourcemint/issues
 
+## Brand assets
+
+Official SourceMint logo (for explorers, wallets, and token lists):
+
+- SVG (32×32 viewBox): [assets/logo.svg](https://khalidsaidi.github.io/sourcemint/assets/logo.svg)
+- PNG 64×64: [assets/logo-64.png](https://khalidsaidi.github.io/sourcemint/assets/logo-64.png)
+- PNG 256×256: [assets/logo-256.png](https://khalidsaidi.github.io/sourcemint/assets/logo-256.png)
+
 ## Contact
 
 Official email: khalidsaidi66@gmail.com
+
+This Gmail address is the project's official primary contact and is used for explorer/token-list applications. All official communication comes from it or from the GitHub accounts listed above.
