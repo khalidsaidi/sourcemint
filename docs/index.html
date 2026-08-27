@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SourceMint (SRCMNT) — fixed-supply ERC-20 on Base</title>
+<meta name="description" content="SourceMint (SRCMNT) is a fixed-supply, open-source ERC-20 on Base mainnet: 1,000,000 tokens minted once, no owner functions, verified source, documented treasury.">
+<link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+<link rel="canonical" href="https://khalidsaidi.github.io/sourcemint/">
+<meta property="og:title" content="SourceMint (SRCMNT)">
+<meta property="og:description" content="Fixed-supply, open-source ERC-20 on Base. One mint, no owner, verifiable end to end.">
+<meta property="og:image" content="https://khalidsaidi.github.io/sourcemint/assets/logo-256.png">
+<meta property="og:url" content="https://khalidsaidi.github.io/sourcemint/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Source+Sans+3:wght@400;600&family=Source+Code+Pro:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F5FAF7;
+  --ink:#101D2C;
+  --mint:#147258;
+  --mint-bright:#178A66;
+  --blue:#1D4ED8;
+  --line:#D8E5DD;
+  --dim:#566873;
+  --card:#FFFFFF;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:"Source Sans 3",system-ui,-apple-system,sans-serif;
+  font-size:1.0625rem;line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--mint);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
+a:hover{color:var(--ink)}
+a:focus-visible,button:focus-visible{outline:2px solid var(--blue);outline-offset:3px;border-radius:2px}
+code,.mono{font-family:"Source Code Pro",ui-monospace,monospace}
+.wrap{max-width:960px;margin:0 auto;padding:0 24px}
+
+/* header */
+header.site{border-bottom:1px solid var(--line);background:var(--paper)}
+.site-row{display:flex;align-items:center;justify-content:space-between;padding:18px 0}
+.brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:var(--ink)}
+.brand img{width:32px;height:32px;border-radius:8px}
+.brand b{font-family:"Source Serif 4",serif;font-weight:700;font-size:1.15rem;letter-spacing:.01em}
+nav.top a{margin-left:22px;font-size:.95rem;color:var(--dim);text-decoration:none}
+nav.top a:hover{color:var(--mint)}
+@media(max-width:640px){nav.top{display:none}}
+
+/* hero */
+.hero{padding:72px 0 64px;border-bottom:1px solid var(--line)}
+.eyebrow{font-family:"Source Code Pro",monospace;font-size:.78rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--mint)}
+.hero h1{font-family:"Source Serif 4",serif;font-weight:700;font-size:clamp(2.6rem,6vw,3.9rem);line-height:1.05;margin:14px 0 18px;letter-spacing:-.015em}
+.hero p.thesis{max-width:34em;font-size:1.2rem;color:var(--dim)}
+.hero-grid{display:grid;grid-template-columns:1fr 380px;gap:56px;align-items:center}
+@media(max-width:820px){.hero-grid{grid-template-columns:1fr}}
+
+/* specimen certificate — the signature */
+.specimen{
+  background:var(--card);
+  border:1px solid var(--ink);
+  outline:1px solid var(--ink);
+  outline-offset:4px;
+  padding:26px 26px 22px;
+  position:relative;
+}
+.specimen .spec-head{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px}
+.specimen .spec-head span{font-family:"Source Code Pro",monospace;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.spec-id{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+.spec-id img{width:44px;height:44px;border-radius:10px}
+.spec-id .nm{font-family:"Source Serif 4",serif;font-weight:700;font-size:1.35rem;line-height:1.1}
+.spec-id .sub{font-size:.85rem;color:var(--dim)}
+.spec-rows{border-top:1px solid var(--line)}
+.spec-rows div{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line);font-size:.9rem}
+.spec-rows dt{color:var(--dim)}
+.spec-rows dd{font-family:"Source Code Pro",monospace;font-weight:600;text-align:right}
+.spec-addr{margin-top:14px;font-family:"Source Code Pro",monospace;font-size:.72rem;word-break:break-all;color:var(--ink)}
+.spec-addr a{color:var(--ink)}
+.seal{
+  margin-top:16px;display:inline-flex;align-items:center;gap:8px;
+  font-family:"Source Code Pro",monospace;font-size:.72rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--mint);border:1.5px solid var(--mint);border-radius:999px;padding:6px 14px;
+}
+.seal svg{width:13px;height:13px}
+
+/* sections */
+section{padding:58px 0;border-bottom:1px solid var(--line)}
+.sec-label{font-family:"Source Code Pro",monospace;font-size:.75rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--mint);margin-bottom:10px}
+section h2{font-family:"Source Serif 4",serif;font-weight:700;font-size:1.9rem;margin-bottom:18px;letter-spacing:-.01em}
+section p{max-width:44em;margin-bottom:14px}
+section p:last-child{margin-bottom:0}
+
+/* purpose */
+.threes{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;margin-top:26px}
+@media(max-width:760px){.threes{grid-template-columns:1fr}}
+.threes h3{font-family:"Source Serif 4",serif;font-size:1.12rem;margin-bottom:8px}
+.threes p{font-size:.95rem;color:var(--dim);margin:0}
+
+/* fact grid */
+.facts{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);background:var(--card);margin-top:8px}
+@media(max-width:760px){.facts{grid-template-columns:repeat(2,1fr)}}
+.facts div{padding:18px 20px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.facts dt{font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:4px}
+.facts dd{font-weight:600}
+.facts dd.mono{font-size:.95rem}
+
+/* contract cards */
+.contracts{display:grid;gap:18px;margin-top:8px}
+.contract{background:var(--card);border:1px solid var(--line);padding:20px 22px}
+.contract .net{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.contract .net b{font-family:"Source Serif 4",serif}
+.chainpill{font-family:"Source Code Pro",monospace;font-size:.72rem;color:var(--blue);border:1px solid var(--blue);border-radius:999px;padding:2px 10px}
+.contract code{font-size:.82rem;word-break:break-all;display:block;margin:6px 0 10px}
+.contract .links{font-size:.9rem}
+
+/* treasury */
+table.treasury{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);margin:8px 0 18px;font-size:.95rem}
+table.treasury th,table.treasury td{padding:12px 16px;text-align:left;border-bottom:1px solid var(--line)}
+table.treasury th{font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);font-weight:600}
+table.treasury td.mono{font-size:.8rem;word-break:break-all}
+.splitbar{display:flex;height:14px;border:1px solid var(--ink);overflow:hidden;margin:6px 0 8px}
+.splitbar i{display:block;height:100%}
+.splitbar .a{width:90%;background:var(--ink)}
+.splitbar .b{width:10%;background:var(--mint-bright)}
+.splitkey{display:flex;gap:24px;font-size:.85rem;color:var(--dim)}
+.splitkey i{display:inline-block;width:10px;height:10px;margin-right:6px}
+.splitkey .a i{background:var(--ink)}
+.splitkey .b i{background:var(--mint-bright)}
+
+/* roadmap ledger */
+.ledger{border-top:1px solid var(--line);margin-top:6px}
+.ledger>div{display:grid;grid-template-columns:120px 1fr;gap:20px;padding:16px 0;border-bottom:1px solid var(--line)}
+@media(max-width:560px){.ledger>div{grid-template-columns:1fr}}
+.ledger .when{font-family:"Source Code Pro",monospace;font-weight:600;font-size:.9rem;color:var(--mint)}
+.ledger p{margin:0;max-width:none}
+
+/* provenance list */
+.prov{list-style:none;margin-top:6px}
+.prov li{padding:10px 0;border-bottom:1px solid var(--line);font-size:.95rem}
+.prov li span{color:var(--dim);display:block;font-size:.8rem;letter-spacing:.06em;text-transform:uppercase;margin-bottom:2px}
+.prov a{word-break:break-all}
+
+/* channels / brand */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:40px}
+@media(max-width:720px){.two-col{grid-template-columns:1fr}}
+.linklist{list-style:none}
+.linklist li{padding:8px 0;border-bottom:1px solid var(--line)}
+.brandrow{display:flex;align-items:center;gap:16px;padding:10px 0;border-bottom:1px solid var(--line)}
+.brandrow img{width:36px;height:36px;border-radius:8px;border:1px solid var(--line)}
+.brandrow .t{font-size:.95rem}
+.brandrow .t small{display:block;color:var(--dim)}
+
+/* footer */
+footer{padding:44px 0 60px;color:var(--dim);font-size:.9rem}
+footer .foot-note{max-width:46em;margin-bottom:16px}
+footer .mono{font-size:.78rem}
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap site-row">
+    <a class="brand" href="#top"><img src="assets/logo.svg" alt="SourceMint logo"><b>SourceMint</b></a>
+    <nav class="top" aria-label="Sections">
+      <a href="#purpose">Purpose</a>
+      <a href="#contracts">Contracts</a>
+      <a href="#treasury">Treasury</a>
+      <a href="#roadmap">Roadmap</a>
+      <a href="#contact">Contact</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <div class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <p class="eyebrow">Open-source token · Base mainnet</p>
+        <h1>Minted once.<br>Verifiable forever.</h1>
+        <p class="thesis">SourceMint (SRCMNT) is a fixed-supply ERC-20 whose entire history fits on one page: a single mint, no owner functions, verified source code, and a treasury documented in the open.</p>
+      </div>
+
+      <aside class="specimen" aria-label="Token specimen">
+        <div class="spec-head"><span>Token specimen</span><span>Chain 8453</span></div>
+        <div class="spec-id">
+          <img src="assets/logo.svg" alt="">
+          <div>
+            <div class="nm">SourceMint</div>
+            <div class="sub">SRCMNT · ERC-20 · 18 decimals</div>
+          </div>
+        </div>
+        <dl class="spec-rows">
+          <div><dt>Fixed supply</dt><dd>1,000,000</dd></div>
+          <div><dt>Minted</dt><dd>2026-02-10 · once</dd></div>
+          <div><dt>Owner functions</dt><dd>none</dd></div>
+          <div><dt>Extensions</dt><dd>Burnable · Permit</dd></div>
+        </dl>
+        <p class="spec-addr"><a href="https://basescan.org/token/0x914F6b6a0DaD39A3CB932dcf4D1af885C7c08EeB">0x914F6b6a0DaD39A3CB932dcf4D1af885C7c08EeB</a></p>
+        <p class="seal"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8.5 6.5 12 13 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Source verified on BaseScan</p>
+      </aside>
+    </div>
+  </div>
+
+  <section id="purpose">
+    <div class="wrap">
+      <p class="sec-label">Purpose</p>
+      <h2>Why this token exists</h2>
+      <p>SourceMint pairs a deliberately minimal token with a fully documented path to producing one. The contract does less on purpose; the repository shows everything.</p>
+      <div class="threes">
+        <div>
+          <h3>A reference deployment</h3>
+          <p>A complete, reproducible route from Foundry project to verified mainnet contract: tests, gas snapshots, CI, deployment scripts, and recorded artifacts.</p>
+        </div>
+        <div>
+          <h3>A contributor reward unit</h3>
+          <p>SRCMNT is the planned reward for contributions to the SourceMint tooling — documentation, test coverage, deployment improvements — paid from a documented rewards wallet.</p>
+        </div>
+        <div>
+          <h3>Trust-minimized by design</h3>
+          <p>No owner, no admin, no pause, no fees, no minting after deployment. Supply can only shrink, and only when a holder chooses to burn.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="token">
+    <div class="wrap">
+      <p class="sec-label">Token</p>
+      <h2>Facts on record</h2>
+      <dl class="facts">
+        <div><dt>Name</dt><dd>SourceMint</dd></div>
+        <div><dt>Symbol</dt><dd>SRCMNT</dd></div>
+        <div><dt>Decimals</dt><dd>18</dd></div>
+        <div><dt>Supply model</dt><dd>Fixed · minted once</dd></div>
+        <div><dt>Total supply</dt><dd class="mono">1,000,000</dd></div>
+        <div><dt>Admin functions</dt><dd>None</dd></div>
+      </dl>
+      <p style="margin-top:16px">Built on OpenZeppelin's audited ERC-20 base with the Burnable and Permit (EIP-2612) extensions. The project's own contract code is public and verified, and has not been separately audited.</p>
+    </div>
+  </section>
+
+  <section id="contracts">
+    <div class="wrap">
+      <p class="sec-label">Contracts</p>
+      <h2>Official addresses</h2>
+      <div class="contracts">
+        <div class="contract">
+          <div class="net"><b>Base Mainnet — production</b><span class="chainpill">chainId 8453</span></div>
+          <code>0x914F6b6a0DaD39A3CB932dcf4D1af885C7c08EeB</code>
+          <p class="links"><a href="https://basescan.org/address/0x914f6b6a0dad39a3cb932dcf4d1af885c7c08eeb#code">Verified source on BaseScan</a> · <a href="https://basescan.org/tx/0x6b06299804074d1ab8ce78d0c4ce40216e51ac653070cba10714d0fa3b42bbfa">Deployment transaction</a></p>
+        </div>
+        <div class="contract">
+          <div class="net"><b>Sepolia — testnet</b><span class="chainpill">chainId 11155111</span></div>
+          <code>0x8c2B67EA395824Cc069F5e13b1d80E6016751a4A</code>
+          <p class="links"><a href="https://sepolia.etherscan.io/address/0x8c2b67ea395824cc069f5e13b1d80e6016751a4a#code">Verified source on Etherscan</a></p>
+        </div>
+      </div>
+      <p style="margin-top:16px">Any address not listed here is not SourceMint.</p>
+    </div>
+  </section>
+
+  <section id="treasury">
+    <div class="wrap">
+      <p class="sec-label">Treasury</p>
+      <h2>Where the supply sits</h2>
+      <div class="splitbar" role="img" aria-label="Supply split: 90 percent treasury, 10 percent rewards"><i class="a"></i><i class="b"></i></div>
+      <p class="splitkey"><span class="a"><i></i>Treasury · 900,000 (90%)</span><span class="b"><i></i>Rewards · 100,000 (10%)</span></p>
+      <table class="treasury">
+        <thead><tr><th>Wallet</th><th>Address</th><th>Balance</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Treasury (deployer)</td>
+            <td class="mono"><a href="https://basescan.org/address/0x497d34b1d0790f374B32467093d303533399c819">0x497d34b1d0790f374B32467093d303533399c819</a></td>
+            <td>900,000</td>
+            <td>Long-term treasury</td>
+          </tr>
+          <tr>
+            <td>Rewards</td>
+            <td class="mono"><a href="https://basescan.org/address/0x1af3cBcE941a2AC9D987E853b5385b05c405E16F">0x1af3cBcE941a2AC9D987E853b5385b05c405E16F</a></td>
+            <td>100,000</td>
+            <td>Contributor rewards</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>Both wallets are project-controlled. The split was funded in <a href="https://basescan.org/tx/0xc3f5e01e5b6b38b18a8f44943f541118fda201375ca579e0117f4a1ca07979d3">one on-chain transaction</a> on 2026-08-27, and any future movement from these wallets will be documented on this page before or as it happens.</p>
+    </div>
+  </section>
+
+  <section id="roadmap">
+    <div class="wrap">
+      <p class="sec-label">Roadmap</p>
+      <h2>What happens next</h2>
+      <div class="ledger">
+        <div>
+          <p class="when">Q3 2026</p>
+          <p>Publish contributor reward guidelines; begin distributing SRCMNT from the rewards wallet to early contributors.</p>
+        </div>
+        <div>
+          <p class="when">Q4 2026</p>
+          <p>Open reward-allocation discussion on GitHub; publish periodic treasury reports on this page.</p>
+        </div>
+        <div>
+          <p class="when">2027</p>
+          <p>Evaluate liquidity provisioning and further tooling — airdrop scripts, permit-based reward claims — based on community interest.</p>
+        </div>
+      </div>
+      <p style="margin-top:16px">Progress is tracked in <a href="https://github.com/khalidsaidi/sourcemint/issues">GitHub Issues</a> and <a href="https://github.com/khalidsaidi/sourcemint/discussions">Discussions</a>.</p>
+    </div>
+  </section>
+
+  <section id="team">
+    <div class="wrap">
+      <p class="sec-label">Team &amp; provenance</p>
+      <h2>Who is behind this</h2>
+      <p><b>Khalid Saidi</b> — creator and maintainer of SourceMint and its repository. <a href="https://github.com/khalidsaidi">GitHub profile</a>.</p>
+      <ul class="prov">
+        <li><span>Deployment transaction</span><a href="https://basescan.org/tx/0x6b06299804074d1ab8ce78d0c4ce40216e51ac653070cba10714d0fa3b42bbfa">0x6b06299804074d1ab8ce78d0c4ce40216e51ac653070cba10714d0fa3b42bbfa</a></li>
+        <li><span>Deployer / treasury wallet</span><a href="https://basescan.org/address/0x497d34b1d0790f374B32467093d303533399c819">0x497d34b1d0790f374B32467093d303533399c819</a></li>
+        <li><span>Source repository</span><a href="https://github.com/khalidsaidi/sourcemint">github.com/khalidsaidi/sourcemint</a></li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="channels">
+    <div class="wrap two-col">
+      <div>
+        <p class="sec-label">Official channels</p>
+        <h2>Where to find us</h2>
+        <ul class="linklist">
+          <li><a href="https://github.com/khalidsaidi/sourcemint">GitHub repository</a></li>
+          <li><a href="https://github.com/khalidsaidi/sourcemint/discussions">GitHub Discussions</a></li>
+          <li><a href="https://github.com/khalidsaidi/sourcemint/issues">GitHub Issues</a></li>
+        </ul>
+      </div>
+      <div>
+        <p class="sec-label">Brand assets</p>
+        <h2>Official logo</h2>
+        <div class="brandrow"><img src="assets/logo.svg" alt=""><p class="t"><a href="assets/logo.svg">logo.svg</a><small>SVG · 32×32 viewBox</small></p></div>
+        <div class="brandrow"><img src="assets/logo-64.png" alt=""><p class="t"><a href="assets/logo-64.png">logo-64.png</a><small>PNG · 64×64</small></p></div>
+        <div class="brandrow"><img src="assets/logo-256.png" alt=""><p class="t"><a href="assets/logo-256.png">logo-256.png</a><small>PNG · 256×256</small></p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="contact" style="border-bottom:none">
+    <div class="wrap">
+      <p class="sec-label">Contact</p>
+      <h2>Reach the maintainer</h2>
+      <p>Official email: <a href="mailto:khalidsaidi66@gmail.com">khalidsaidi66@gmail.com</a></p>
+      <p>This address is the project's official primary contact and is used for explorer and token-list applications. All official communication comes from it or from the GitHub accounts above.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p class="foot-note">SourceMint is an early-stage open-source project for experimentation, developer tooling, and contributor-reward prototypes. Nothing on this page is financial advice, and SRCMNT is not offered as an investment.</p>
+    <p class="mono">SourceMint · SRCMNT · Base (8453) · 0x914F6b6a0DaD39A3CB932dcf4D1af885C7c08EeB</p>
+  </div>
+</footer>
+
+</body>
+</html>
