@@ -1,4 +1,9 @@
 title: SourceMint (SRCMNT)
-description: "Open-source ERC-20 token contract and Foundry tooling"
+description: "SourceMint (SRCMNT) is a fixed-supply, open-source ERC-20 token on Base mainnet (0x914F6b6a0DaD39A3CB932dcf4D1af885C7c08EeB) built with Foundry — verified source, no owner functions, burnable, ERC-2612 permit."
 theme: jekyll-theme-cayman
-
+lang: en
+url: "https://khalidsaidi.github.io"
+baseurl: "/sourcemint"
+logo: /assets/logo-256.png
+plugins:
+  - jekyll-seo-tag
