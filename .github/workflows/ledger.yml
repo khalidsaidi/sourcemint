@@ -1,0 +1,29 @@
+name: Ledger
+
+# Proves the SourceMint accounting invariant: every SRCMNT transfer out of a
+# project wallet is recorded in rewards/ledger.json with a stated reason.
+# Runs on every change and weekly, so an unaccounted movement turns this
+# badge red in public.
+
+permissions: {}
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: Verify on-chain accounting
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify ledger against Base mainnet
+        run: python3 script/verify_ledger.py

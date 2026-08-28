@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SourceMint (SRCMNT) — fixed-supply ERC-20 on Base</title>
-<meta name="description" content="SourceMint (SRCMNT) is a fixed-supply, open-source ERC-20 on Base mainnet: 1,000,000 tokens minted once, no owner functions, verified source, documented treasury.">
+<meta name="description" content="SourceMint (SRCMNT): contribution, minted. A fixed-supply ERC-20 on Base that is never sold — tokens move only as recognition for open-source contributions, verified by code.">
 <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
 <link rel="canonical" href="https://srcmnt.xyz/">
 <meta property="og:title" content="SourceMint (SRCMNT)">
-<meta property="og:description" content="Fixed-supply, open-source ERC-20 on Base. One mint, no owner, verifiable end to end.">
+<meta property="og:description" content="Contribution, minted. A fixed-supply ERC-20 on Base, never sold — earned by contributing, accounted for by code.">
 <meta property="og:image" content="https://srcmnt.xyz/assets/logo-256.png">
 <meta property="og:url" content="https://srcmnt.xyz/">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -180,8 +180,8 @@ footer .mono{font-size:.78rem}
     <div class="wrap hero-grid">
       <div>
         <p class="eyebrow">Open-source token · Base mainnet</p>
-        <h1>Minted once.<br>Verifiable forever.</h1>
-        <p class="thesis">SourceMint (SRCMNT) is a fixed-supply ERC-20 whose entire history fits on one page: a single mint, no owner functions, verified source code, and a treasury documented in the open.</p>
+        <h1>Contribution,<br>minted.</h1>
+        <p class="thesis">SourceMint (SRCMNT) is an experiment in accounting for open-source contribution on-chain: a fixed-supply ERC-20 that is never sold — outside a documented treasury, tokens move only as recognition for contributions, and code verifies it.</p>
       </div>
 
       <aside class="specimen" aria-label="Token specimen">
@@ -207,17 +207,17 @@ footer .mono{font-size:.78rem}
 
   <section id="purpose">
     <div class="wrap">
-      <p class="sec-label">Purpose</p>
-      <h2>Why this token exists</h2>
-      <p>SourceMint pairs a deliberately minimal token with a fully documented path to producing one. The contract does less on purpose; the repository shows everything.</p>
+      <p class="sec-label">Mission</p>
+      <h2>Make contribution count, on-chain</h2>
+      <p>Open source runs on work that is rarely visible and almost never accounted for. SourceMint is a small, honest experiment against that: a token whose only distribution channel is contribution to the project itself, with every movement recorded, reasoned, and machine-verified.</p>
       <div class="threes">
         <div>
-          <h3>A reference deployment</h3>
-          <p>A complete, reproducible route from Foundry project to verified mainnet contract: tests, gas snapshots, CI, deployment scripts, and recorded artifacts.</p>
+          <h3>Earned, not sold</h3>
+          <p>No sale, no airdrop. Outside the treasury, SRCMNT moves one way: from the rewards wallet to people whose contributions were merged, under a <a href="https://github.com/khalidsaidi/sourcemint/blob/main/REWARDS.md">public reward policy</a>.</p>
         </div>
         <div>
-          <h3>A contributor reward unit</h3>
-          <p>SRCMNT is the planned reward for contributions to the SourceMint tooling — documentation, test coverage, deployment improvements — paid from a documented rewards wallet.</p>
+          <h3>Accounted, provably</h3>
+          <p>Every transfer out of a project wallet must appear in a <a href="https://github.com/khalidsaidi/sourcemint/blob/main/rewards/ledger.json">public ledger</a> with its reason. CI re-checks the ledger against the chain — an unaccounted movement fails the build in public.</p>
         </div>
         <div>
           <h3>Trust-minimized by design</h3>
@@ -286,7 +286,10 @@ footer .mono{font-size:.78rem}
           </tr>
         </tbody>
       </table>
-      <p>Both wallets are project-controlled. The split was funded in <a href="https://basescan.org/tx/0xc3f5e01e5b6b38b18a8f44943f541118fda201375ca579e0117f4a1ca07979d3">one on-chain transaction</a> on 2026-08-27, and any future movement from these wallets will be documented on this page before or as it happens.</p>
+      <p>Both wallets are project-controlled. The split was funded in <a href="https://basescan.org/tx/0xc3f5e01e5b6b38b18a8f44943f541118fda201375ca579e0117f4a1ca07979d3">one on-chain transaction</a> on 2026-08-27.</p>
+      <h2 style="margin-top:36px;font-size:1.4rem">Don't take our word for it</h2>
+      <p>The accounting invariant — <em>every token leaving a project wallet has a ledgered reason</em> — is enforced by code, not promises. The <a href="https://github.com/khalidsaidi/sourcemint/blob/main/rewards/ledger.json">ledger</a> lists each movement with its transaction hash and reason; the <a href="https://github.com/khalidsaidi/sourcemint/actions/workflows/ledger.yml">Ledger check</a> replays the chain against it on every change and weekly. Verify it yourself from a clone of the repository:</p>
+      <p><code style="display:block;background:var(--card);border:1px solid var(--line);padding:12px 16px;font-size:.85rem">python3 script/verify_ledger.py</code></p>
     </div>
   </section>
 

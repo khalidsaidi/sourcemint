@@ -1,0 +1,29 @@
+{
+  "$schema_note": "Public accounting ledger for SourceMint (SRCMNT). Invariant: every on-chain transfer OUT of a project wallet must have an entry here with a stated reason. Verified against the chain by script/verify_ledger.py in CI.",
+  "token": "0x914F6b6a0DaD39A3CB932dcf4D1af885C7c08EeB",
+  "chain_id": 8453,
+  "project_wallets": {
+    "treasury": "0x497d34b1d0790f374B32467093d303533399c819",
+    "rewards": "0x1af3cBcE941a2AC9D987E853b5385b05c405E16F"
+  },
+  "entries": [
+    {
+      "tx": "0x6b06299804074d1ab8ce78d0c4ce40216e51ac653070cba10714d0fa3b42bbfa",
+      "date": "2026-02-10",
+      "from": "mint",
+      "to": "0x497d34b1d0790f374B32467093d303533399c819",
+      "amount": "1000000",
+      "reason": "Genesis: full fixed supply minted to deployer at deployment. No further minting is possible.",
+      "ref": "https://basescan.org/tx/0x6b06299804074d1ab8ce78d0c4ce40216e51ac653070cba10714d0fa3b42bbfa"
+    },
+    {
+      "tx": "0xc3f5e01e5b6b38b18a8f44943f541118fda201375ca579e0117f4a1ca07979d3",
+      "date": "2026-08-27",
+      "from": "0x497d34b1d0790f374B32467093d303533399c819",
+      "to": "0x1af3cBcE941a2AC9D987E853b5385b05c405E16F",
+      "amount": "100000",
+      "reason": "Treasury split: fund the contributor rewards wallet (10% of supply).",
+      "ref": "https://srcmnt.xyz/#treasury"
+    }
+  ]
+}

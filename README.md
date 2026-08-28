@@ -1,5 +1,17 @@
 # SourceMint (SRCMNT)
 
+[![Ledger](https://github.com/khalidsaidi/sourcemint/actions/workflows/ledger.yml/badge.svg)](https://github.com/khalidsaidi/sourcemint/actions/workflows/ledger.yml)
+
+**Contribution, minted.** SourceMint is an experiment in accounting for open-source
+contribution on-chain: a fixed-supply ERC-20 on Base that is never sold — outside a
+documented treasury, tokens move only as recognition for merged contributions
+([reward policy](REWARDS.md)). The invariant is enforced by code: every transfer out
+of a project wallet must be recorded in [`rewards/ledger.json`](rewards/ledger.json)
+with a reason, and [CI verifies the ledger against the chain](.github/workflows/ledger.yml)
+— an unaccounted movement fails the build in public.
+
+Website: https://srcmnt.xyz
+
 Open-source ERC20 token contract built with Foundry.
 
 ## Contract
