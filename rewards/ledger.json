@@ -24,6 +24,15 @@
       "amount": "100000",
       "reason": "Treasury split: fund the contributor rewards wallet (10% of supply).",
       "ref": "https://srcmnt.xyz/#treasury"
+    },
+    {
+      "tx": "0xe3272b7a83465a86317a94e69e709f162d97dca32ce86d35e95f00641f4cccb4",
+      "date": "2026-08-28",
+      "from": "0x497d34b1d0790f374B32467093d303533399c819",
+      "to": "0xffD6c93bB4749830DCD55a540E6800CEaBBfcFD8",
+      "amount": "10000",
+      "reason": "Treasury liquidity provision: seed the ETH/SRCMNT pool on Aerodrome (basic volatile, 0.3%) with 10,000 SRCMNT and 0.012 ETH, so contributor rewards are exchangeable rather than symbolic. LP tokens are held by the treasury wallet.",
+      "ref": "https://basescan.org/address/0xffD6c93bB4749830DCD55a540E6800CEaBBfcFD8"
     }
   ]
 }

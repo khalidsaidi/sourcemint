@@ -124,12 +124,14 @@ table.treasury th{font-size:.78rem;letter-spacing:.08em;text-transform:uppercase
 table.treasury td.mono{font-size:.8rem;word-break:break-all}
 .splitbar{display:flex;height:14px;border:1px solid var(--ink);overflow:hidden;margin:6px 0 8px}
 .splitbar i{display:block;height:100%}
-.splitbar .a{width:90%;background:var(--ink)}
+.splitbar .a{width:89%;background:var(--ink)}
 .splitbar .b{width:10%;background:var(--mint-bright)}
-.splitkey{display:flex;gap:24px;font-size:.85rem;color:var(--dim)}
+.splitbar .c{width:1%;background:var(--blue)}
+.splitkey{display:flex;gap:24px;flex-wrap:wrap;font-size:.85rem;color:var(--dim)}
 .splitkey i{display:inline-block;width:10px;height:10px;margin-right:6px}
 .splitkey .a i{background:var(--ink)}
 .splitkey .b i{background:var(--mint-bright)}
+.splitkey .c i{background:var(--blue)}
 
 /* roadmap ledger */
 .ledger{border-top:1px solid var(--line);margin-top:6px}
@@ -267,15 +269,15 @@ footer .mono{font-size:.78rem}
     <div class="wrap">
       <p class="sec-label">Treasury</p>
       <h2>Where the supply sits</h2>
-      <div class="splitbar" role="img" aria-label="Supply split: 90 percent treasury, 10 percent rewards"><i class="a"></i><i class="b"></i></div>
-      <p class="splitkey"><span class="a"><i></i>Treasury · 900,000 (90%)</span><span class="b"><i></i>Rewards · 100,000 (10%)</span></p>
+      <div class="splitbar" role="img" aria-label="Supply split: 89 percent treasury, 10 percent rewards, 1 percent liquidity"><i class="a"></i><i class="b"></i><i class="c"></i></div>
+      <p class="splitkey"><span class="a"><i></i>Treasury · 890,000 (89%)</span><span class="b"><i></i>Rewards · 100,000 (10%)</span><span class="c"><i></i>Liquidity · 10,000 (1%)</span></p>
       <table class="treasury">
         <thead><tr><th>Wallet</th><th>Address</th><th>Balance</th><th>Purpose</th></tr></thead>
         <tbody>
           <tr>
             <td>Treasury (deployer)</td>
             <td class="mono"><a href="https://basescan.org/address/0x497d34b1d0790f374B32467093d303533399c819">0x497d34b1d0790f374B32467093d303533399c819</a></td>
-            <td>900,000</td>
+            <td>890,000</td>
             <td>Long-term treasury</td>
           </tr>
           <tr>
@@ -284,9 +286,15 @@ footer .mono{font-size:.78rem}
             <td>100,000</td>
             <td>Contributor rewards</td>
           </tr>
+          <tr>
+            <td>Liquidity pool</td>
+            <td class="mono"><a href="https://basescan.org/address/0xffD6c93bB4749830DCD55a540E6800CEaBBfcFD8">0xffD6c93bB4749830DCD55a540E6800CEaBBfcFD8</a></td>
+            <td>10,000</td>
+            <td>ETH/SRCMNT pool on Aerodrome</td>
+          </tr>
         </tbody>
       </table>
-      <p>Both wallets are project-controlled. The split was funded in <a href="https://basescan.org/tx/0xc3f5e01e5b6b38b18a8f44943f541118fda201375ca579e0117f4a1ca07979d3">one on-chain transaction</a> on 2026-08-27.</p>
+      <p>The treasury and rewards wallets are project-controlled; the split was funded in <a href="https://basescan.org/tx/0xc3f5e01e5b6b38b18a8f44943f541118fda201375ca579e0117f4a1ca07979d3">one on-chain transaction</a> on 2026-08-27. On 2026-08-28 the treasury seeded a <a href="https://aerodrome.finance/deposit?token0=eth&amp;token1=0x914F6b6a0DaD39A3CB932dcf4D1af885C7c08EeB">public ETH/SRCMNT pool</a> on Aerodrome with 10,000 SRCMNT and 0.012 ETH, so rewards can be exchanged rather than being symbolic. The pool is permissionless: anyone can trade against it or add liquidity, and its price is set by the market, not by the project.</p>
       <h2 style="margin-top:36px;font-size:1.4rem">Don't take our word for it</h2>
       <p>The accounting invariant — <em>every token leaving a project wallet has a ledgered reason</em> — is enforced by code, not promises. The <a href="https://github.com/khalidsaidi/sourcemint/blob/main/rewards/ledger.json">ledger</a> lists each movement with its transaction hash and reason; the <a href="https://github.com/khalidsaidi/sourcemint/actions/workflows/ledger.yml">Ledger check</a> replays the chain against it on every change and weekly. Verify it yourself from a clone of the repository:</p>
       <p><code style="display:block;background:var(--card);border:1px solid var(--line);padding:12px 16px;font-size:.85rem">python3 script/verify_ledger.py</code></p>
