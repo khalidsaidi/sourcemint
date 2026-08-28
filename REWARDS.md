@@ -1,9 +1,11 @@
 # SourceMint contribution rewards
 
 SourceMint's mission is to make open-source contribution visible and rewarded
-on-chain. SRCMNT is not sold and not airdropped: outside the documented
-treasury, the only way tokens move is as recognition for contributions to this
-repository.
+on-chain. There is no ICO, token sale, or airdrop: supply enters circulation as
+recognition for contributions to this repository. Once distributed, SRCMNT is
+an ordinary ERC-20 that holders may trade freely. Treasury operations — including
+any liquidity provision that keeps rewards liquid — are recorded in the ledger
+like every other movement.
 
 ## The accounting invariant
 
