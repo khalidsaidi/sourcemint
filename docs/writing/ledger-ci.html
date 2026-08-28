@@ -76,7 +76,14 @@ footer{font-family:"Source Sans 3",sans-serif;font-size:.95rem;color:var(--dim);
 
   <p>The ledger is a JSON file in the repository, <code>rewards/ledger.json</code>. Each entry is one movement:</p>
 
-<pre><code>{<br>  "tx": "0xc3f5e01e5b6b38b18a8f44943f541118fda201375ca579e0117f4a1ca07979d3",<br>  "date": "2026-08-27",<br>  "from": "0x497d34b1d0790f374B32467093d303533399c819",<br>  "to": "0x1af3cBcE941a2AC9D987E853b5385b05c405E16F",<br>  "amount": "100000",<br>  "reason": "Treasury split: fund the contributor rewards wallet (10% of supply)."<br>}</code></pre>
+<pre>{
+  "tx": "0xc3f5e01e5b6b38b18a8f44943f541118fda201375ca579e0117f4a1ca07979d3",
+  "date": "2026-08-27",
+  "from": "0x497d34b1d0790f374B32467093d303533399c819",
+  "to": "0x1af3cBcE941a2AC9D987E853b5385b05c405E16F",
+  "amount": "100000",
+  "reason": "Treasury split: fund the contributor rewards wallet (10% of supply)."
+}</pre>
 
   <p>Nothing clever. A transaction hash, the parties, the amount, and — the part a blockchain can't give you — <em>why</em>.</p>
 
@@ -84,7 +91,9 @@ footer{font-family:"Source Sans 3",sans-serif;font-size:.95rem;color:var(--dim);
 
   <p>A script pulls the token's complete transfer history from a public indexer and walks it. For each transfer it asks one question: did this leave a project wallet?</p>
 
-<pre><code>is_mint = frm == "0x" + "0" * 40<br>if not (is_mint or frm in wallets):<br>    continue  # third-party movement: outside project accounting</code></pre>
+<pre>is_mint = frm == "0x" + "0" * 40
+if not (is_mint or frm in wallets):
+    continue  # third-party movement: outside project accounting</pre>
 
   <p>Transfers between strangers are none of the project's business and are skipped. Everything that leaves a project wallet — plus the genesis mint — must match a ledger entry on transaction hash, recipient, and amount. The check runs in both directions: on-chain movements with no ledger entry are a failure, and ledger entries with no on-chain counterpart are equally a failure. You cannot fix a discrepancy by writing fiction into the file.</p>
 
@@ -92,7 +101,8 @@ footer{font-family:"Source Sans 3",sans-serif;font-size:.95rem;color:var(--dim);
 
   <p><strong>Integer math, not floats.</strong> A supply of 100,000 tokens with 18 decimals is 10<sup>23</sup> wei. In float64 that becomes <code>99999.99999999999</code>, and a naive comparison fails against a ledger that honestly says <code>100000</code>. Divide with integers and compare strings:</p>
 
-<pre><code>if amount_wei % DECIMALS == 0:<br>    amount = str(amount_wei // DECIMALS)</code></pre>
+<pre>if amount_wei % DECIMALS == 0:
+    amount = str(amount_wei // DECIMALS)</pre>
 
   <p><strong>Retries, because indexers are flaky.</strong> The public indexer this uses returned HTTP 500 for roughly 7 of 10 requests during one stretch of testing. A verifier that treats a bad afternoon as an accounting violation is a verifier people learn to ignore, so transient 5xx responses get exponential backoff and only genuine mismatches fail the run.</p>
 
@@ -124,7 +134,9 @@ footer{font-family:"Source Sans 3",sans-serif;font-size:.95rem;color:var(--dim);
 
   <p>The point of the pattern is that it doesn't require trusting me:</p>
 
-<pre><code>git clone https://github.com/khalidsaidi/sourcemint<br>cd sourcemint<br>python3 script/verify_ledger.py</code></pre>
+<pre>git clone https://github.com/khalidsaidi/sourcemint
+cd sourcemint
+python3 script/verify_ledger.py</pre>
 
   <p>It reads public chain data, so it produces the same answer for you as it does for CI. If it ever prints something other than <code>OK</code>, that is a real finding and I'd like to hear about it.</p>
 
