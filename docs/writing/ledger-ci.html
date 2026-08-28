@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Make the build fail when the treasury moves</title>
+<meta name="description" content="How I turned a token's accounting promise into a test that runs on every commit — a public ledger for SourceMint (SRCMNT) verified against Base by CI.">
+<link rel="icon" href="../assets/logo.svg" type="image/svg+xml">
+<link rel="canonical" href="https://srcmnt.xyz/writing/ledger-ci.html">
+<meta property="og:title" content="Make the build fail when the treasury moves">
+<meta property="og:description" content="Turning a token's accounting promise into a test that runs on every commit.">
+<meta property="og:image" content="https://srcmnt.xyz/assets/logo-256.png">
+<meta property="og:type" content="article">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Source+Sans+3:wght@400;600&family=Source+Code+Pro:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#F5FAF7;--ink:#101D2C;--mint:#147258;--line:#D8E5DD;--dim:#566873;--card:#FFFFFF}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);font-family:"Source Serif 4",Georgia,serif;font-size:1.15rem;line-height:1.7;-webkit-font-smoothing:antialiased}
+a{color:var(--mint)}
+a:hover{color:var(--ink)}
+.wrap{max-width:720px;margin:0 auto;padding:0 24px}
+header.site{border-bottom:1px solid var(--line);margin-bottom:48px}
+.site-row{display:flex;align-items:center;gap:12px;padding:18px 0}
+.site-row img{width:28px;height:28px;border-radius:7px}
+.site-row a{font-family:"Source Sans 3",sans-serif;font-weight:600;font-size:1rem;text-decoration:none;color:var(--ink)}
+article{padding-bottom:64px}
+h1{font-weight:700;font-size:clamp(2rem,5vw,2.7rem);line-height:1.15;letter-spacing:-.015em;margin-bottom:14px}
+.standfirst{font-size:1.2rem;color:var(--dim);margin-bottom:8px}
+.byline{font-family:"Source Sans 3",sans-serif;font-size:.9rem;color:var(--dim);border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:32px}
+h2{font-family:"Source Sans 3",sans-serif;font-weight:600;font-size:1.4rem;margin:40px 0 14px;letter-spacing:-.01em}
+p{margin-bottom:20px}
+blockquote{border-left:3px solid var(--mint);padding-left:20px;margin:24px 0;color:var(--dim);font-style:italic}
+pre{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:16px 18px;overflow-x:auto;margin-bottom:24px}
+code{font-family:"Source Code Pro",ui-monospace,monospace;font-size:.85rem}
+p code,li code{background:var(--card);border:1px solid var(--line);border-radius:3px;padding:1px 5px;font-size:.82em}
+ul{margin:0 0 24px 24px}
+li{margin-bottom:8px}
+hr{border:none;border-top:1px solid var(--line);margin:40px 0}
+footer{font-family:"Source Sans 3",sans-serif;font-size:.95rem;color:var(--dim);border-top:1px solid var(--line);padding:24px 0 60px}
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap site-row">
+    <img src="../assets/logo.svg" alt="">
+    <a href="../">SourceMint</a>
+  </div>
+</header>
+
+<div class="wrap">
+<article>
+  <h1>Make the build fail when the treasury moves</h1>
+  <p class="standfirst">How I turned a token's accounting promise into a test that runs on every commit.</p>
+  <p class="byline">Khalid Saidi · 28 August 2026</p>
+
+  <p>Every token project says something about its treasury. "Team tokens are locked." "Supply is for the community." "Nothing will be sold." These are sentences on a website, and sentences are cheap. The wallets are public, so anyone <em>could</em> check — but almost nobody does, and the projects know it.</p>
+
+  <p>I wanted to find out what happens if you remove the gap between the claim and the check. Not by promising harder, but by writing the claim as a program that fails loudly when it stops being true.</p>
+
+  <p>This is a short write-up of how that works in <a href="https://srcmnt.xyz">SourceMint</a> (SRCMNT), a small fixed-supply ERC-20 on Base. The token itself is deliberately boring. The accounting around it is the interesting part, and the pattern is reusable — you can lift it into any project with a treasury.</p>
+
+  <h2>The claim</h2>
+
+  <p>SourceMint's claim is narrow enough to be testable:</p>
+
+  <blockquote>Every transfer of SRCMNT out of a project wallet is recorded in a public ledger, with a stated reason.</blockquote>
+
+  <p>That's it. Not "we will never sell" — a promise about the future that no code can enforce. Instead: <em>whatever we do, it is written down, and the writing is checked against reality.</em></p>
+
+  <p>Two things make this checkable. The project wallets are named publicly, and the chain remembers everything.</p>
+
+  <h2>The ledger</h2>
+
+  <p>The ledger is a JSON file in the repository, <code>rewards/ledger.json</code>. Each entry is one movement:</p>
+
+<pre><code>{
+  "tx": "0xc3f5e01e5b6b38b18a8f44943f541118fda201375ca579e0117f4a1ca07979d3",
+  "date": "2026-08-27",
+  "from": "0x497d34b1d0790f374B32467093d303533399c819",
+  "to": "0x1af3cBcE941a2AC9D987E853b5385b05c405E16F",
+  "amount": "100000",
+  "reason": "Treasury split: fund the contributor rewards wallet (10% of supply)."
+}</code></pre>
+
+  <p>Nothing clever. A transaction hash, the parties, the amount, and — the part a blockchain can't give you — <em>why</em>.</p>
+
+  <h2>The checker</h2>
+
+  <p>A script pulls the token's complete transfer history from a public indexer and walks it. For each transfer it asks one question: did this leave a project wallet?</p>
+
+<pre><code>is_mint = frm == "0x" + "0" * 40
+if not (is_mint or frm in wallets):
+    continue  # third-party movement: outside project accounting</code></pre>
+
+  <p>Transfers between strangers are none of the project's business and are skipped. Everything that leaves a project wallet — plus the genesis mint — must match a ledger entry on transaction hash, recipient, and amount. The check runs in both directions: on-chain movements with no ledger entry are a failure, and ledger entries with no on-chain counterpart are equally a failure. You cannot fix a discrepancy by writing fiction into the file.</p>
+
+  <p>Two details mattered more than expected.</p>
+
+  <p><strong>Integer math, not floats.</strong> A supply of 100,000 tokens with 18 decimals is 10<sup>23</sup> wei. In float64 that becomes <code>99999.99999999999</code>, and a naive comparison fails against a ledger that honestly says <code>100000</code>. Divide with integers and compare strings:</p>
+
+<pre><code>if amount_wei % DECIMALS == 0:
+    amount = str(amount_wei // DECIMALS)</code></pre>
+
+  <p><strong>Retries, because indexers are flaky.</strong> The public indexer this uses returned HTTP 500 for roughly 7 of 10 requests during one stretch of testing. A verifier that treats a bad afternoon as an accounting violation is a verifier people learn to ignore, so transient 5xx responses get exponential backoff and only genuine mismatches fail the run.</p>
+
+  <h2>The enforcement</h2>
+
+  <p>A GitHub Actions workflow runs the checker on every push, on every pull request, and once a week on a schedule. The weekly run is the important one: it means the claim is re-tested even when nobody is committing code, so a quiet treasury movement gets caught by a scheduled job rather than by someone's goodwill.</p>
+
+  <p>The consequence is small but real. If tokens move out of a project wallet and the ledger isn't updated in the same change, the badge on the repository turns red, in public, and stays red until the movement is explained.</p>
+
+  <h2>What this does and doesn't prove</h2>
+
+  <p>Worth being precise, because "verified" is an overused word.</p>
+
+  <p>It <strong>does</strong> prove that the set of movements out of the named project wallets exactly matches a public list with stated reasons, and that this remains true over time rather than just on launch day.</p>
+
+  <p>It <strong>does not</strong> prove the reasons are honest — "reason" is free text, and a determined liar can write a false one. It doesn't prevent anything; the contract has no restrictions on transfers and shouldn't. It doesn't cover wallets nobody declared, which is the obvious hole in any self-reported scheme. And it says nothing about whether the project is worth your attention.</p>
+
+  <p>What it changes is the cost of inconsistency. Previously, quietly moving treasury tokens required nobody to notice. Now it requires a commit that either explains the movement or leaves a public red build. That's a modest bar, but it's a bar most projects don't have, and it took an afternoon to build.</p>
+
+  <h2>The token, briefly</h2>
+
+  <p>SourceMint is on Base at <code>0x914F6b6a0DaD39A3CB932dcf4D1af885C7c08EeB</code>. Fixed supply of 1,000,000, minted once at deployment. No owner, no admin functions, no pause, no fees, and no way to mint more — supply can only shrink, when a holder chooses to burn. It's built on OpenZeppelin's ERC-20 with the Burnable and Permit extensions, and the source is verified on-chain.</p>
+
+  <p>There was no ICO and no token sale. Supply enters circulation as rewards for merged contributions to the repository, under a <a href="https://github.com/khalidsaidi/sourcemint/blob/main/REWARDS.md">published policy</a>. A small treasury liquidity position exists so that a reward is exchangeable rather than symbolic — and, being a movement out of a project wallet, it has its own ledger entry like everything else.</p>
+
+  <p>Nothing here is financial advice, and SRCMNT is not offered as an investment.</p>
+
+  <h2>Run it yourself</h2>
+
+  <p>The point of the pattern is that it doesn't require trusting me:</p>
+
+<pre><code>git clone https://github.com/khalidsaidi/sourcemint
+cd sourcemint
+python3 script/verify_ledger.py</code></pre>
+
+  <p>It reads public chain data, so it produces the same answer for you as it does for CI. If it ever prints something other than <code>OK</code>, that is a real finding and I'd like to hear about it.</p>
+
+  <ul>
+    <li>Code: <a href="https://github.com/khalidsaidi/sourcemint">github.com/khalidsaidi/sourcemint</a></li>
+    <li>Site and treasury documentation: <a href="https://srcmnt.xyz">srcmnt.xyz</a></li>
+    <li>Contact: <a href="mailto:contact@srcmnt.xyz">contact@srcmnt.xyz</a></li>
+  </ul>
+</article>
+</div>
+
+<footer>
+  <div class="wrap">
+    <a href="../">← Back to SourceMint</a>
+  </div>
+</footer>
+
+</body>
+</html>
