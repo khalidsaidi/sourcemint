@@ -26,4 +26,20 @@ jobs:
         with:
           persist-credentials: false
       - name: Verify ledger against Base mainnet
-        run: python3 script/verify_ledger.py
+        run: |
+          set +e
+          python3 script/verify_ledger.py
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ]; then
+            echo "Ledger verified against Base mainnet."
+            exit 0
+          elif [ "$code" -eq 2 ]; then
+            # An indexer outage is not an accounting finding. Each run re-checks
+            # the full transfer history, so a deferred check loses nothing.
+            echo "::warning title=Ledger not verified::Transfer data source unreachable; deferring to the next run."
+            exit 0
+          else
+            echo "::error title=Accounting violation::A project-wallet movement is unaccounted for in rewards/ledger.json."
+            exit 1
+          fi
