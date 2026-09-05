@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SourceMint (SRCMNT) — Project Overview</title>
+<meta name="description" content="Project overview for SourceMint (SRCMNT): what it is, how the fixed supply is distributed, the CI-enforced accounting invariant, governance, roadmap and risks.">
+<link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+<link rel="canonical" href="https://srcmnt.xyz/whitepaper.html">
+<meta property="og:title" content="SourceMint (SRCMNT) — Project Overview">
+<meta property="og:description" content="What SourceMint is, how supply is distributed, and how its accounting is enforced by code.">
+<meta property="og:image" content="https://srcmnt.xyz/assets/logo-256.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Source+Sans+3:wght@400;600&family=Source+Code+Pro:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#F5FAF7;--ink:#101D2C;--mint:#147258;--line:#D8E5DD;--dim:#566873;--card:#FFFFFF}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);font-family:"Source Serif 4",Georgia,serif;font-size:1.08rem;line-height:1.7}
+a{color:var(--mint)}a:hover{color:var(--ink)}
+.wrap{max-width:760px;margin:0 auto;padding:0 24px}
+header.site{border-bottom:1px solid var(--line);margin-bottom:44px}
+.site-row{display:flex;align-items:center;gap:12px;padding:18px 0}
+.site-row img{width:28px;height:28px;border-radius:7px}
+.site-row a{font-family:"Source Sans 3",sans-serif;font-weight:600;font-size:1rem;text-decoration:none;color:var(--ink)}
+h1{font-weight:700;font-size:clamp(1.9rem,5vw,2.5rem);line-height:1.15;letter-spacing:-.015em;margin-bottom:10px}
+.standfirst{font-size:1.15rem;color:var(--dim);margin-bottom:6px}
+.meta{font-family:"Source Sans 3",sans-serif;font-size:.88rem;color:var(--dim);border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:30px}
+h2{font-family:"Source Sans 3",sans-serif;font-weight:600;font-size:1.3rem;margin:36px 0 12px;letter-spacing:-.01em}
+h3{font-family:"Source Sans 3",sans-serif;font-weight:600;font-size:1.02rem;margin:22px 0 8px}
+p{margin-bottom:16px}
+ul{margin:0 0 16px 22px}li{margin-bottom:7px}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);margin-bottom:20px;font-family:"Source Sans 3",sans-serif;font-size:.95rem}
+th,td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:.76rem;letter-spacing:.07em;text-transform:uppercase;color:var(--dim)}
+td.mono,code{font-family:"Source Code Pro",ui-monospace,monospace;font-size:.84rem;word-break:break-all}
+p code,td code{background:var(--card);border:1px solid var(--line);border-radius:3px;padding:1px 5px}
+.toc{background:var(--card);border:1px solid var(--line);padding:16px 20px;margin-bottom:32px;font-family:"Source Sans 3",sans-serif;font-size:.95rem}
+.toc ol{margin:6px 0 0 20px}.toc li{margin-bottom:4px}
+.note{border-left:3px solid var(--mint);padding-left:18px;color:var(--dim);margin:20px 0}
+footer{font-family:"Source Sans 3",sans-serif;font-size:.92rem;color:var(--dim);border-top:1px solid var(--line);padding:22px 0 56px;margin-top:44px}
+</style>
+</head>
+<body>
+<header class="site"><div class="wrap site-row"><img src="assets/logo.svg" alt=""><a href="./">SourceMint</a></div></header>
+<div class="wrap">
+<article>
+<h1>SourceMint: project overview</h1>
+<p class="standfirst">A fixed-supply ERC-20 on Base whose treasury accounting is enforced by continuous integration.</p>
+<p class="meta">Version 1.0 · 5 September 2026 · Khalid Saidi · <a href="https://srcmnt.xyz">srcmnt.xyz</a></p>
+
+<div class="toc"><b>Contents</b>
+<ol>
+<li><a href="#summary">Summary</a></li>
+<li><a href="#problem">The problem</a></li>
+<li><a href="#what">What SourceMint is</a></li>
+<li><a href="#contract">The contract</a></li>
+<li><a href="#supply">Supply and distribution</a></li>
+<li><a href="#invariant">The accounting invariant</a></li>
+<li><a href="#rewards">How rewards work</a></li>
+<li><a href="#liquidity">Liquidity</a></li>
+<li><a href="#governance">Governance and control</a></li>
+<li><a href="#roadmap">Roadmap</a></li>
+<li><a href="#risks">Risks and limitations</a></li>
+<li><a href="#refs">References</a></li>
+</ol></div>
+
+<h2 id="summary">1. Summary</h2>
+<p>SourceMint (SRCMNT) is an open-source, fixed-supply ERC-20 token deployed on Base mainnet. One million tokens were minted once at deployment; no further minting is possible, and the contract has no owner, administrator, pause switch or transfer fee.</p>
+<p>There was no ICO and no token sale. Supply enters circulation as rewards for merged contributions to the project's public repository. The distinguishing feature is not the token, which is deliberately ordinary, but the accounting around it: <strong>every transfer out of a project-controlled wallet must be recorded in a public ledger with a stated reason, and continuous integration re-verifies that ledger against the blockchain on every change and weekly.</strong> An unaccounted movement turns the repository's build red in public.</p>
+
+<h2 id="problem">2. The problem</h2>
+<p>Token projects routinely make claims about their treasuries — that allocations are locked, that supply is reserved for a community, that nothing will be sold. These claims are published as prose on a website. The wallets are usually public, so the claims are checkable in principle, but almost nobody checks them in practice, and projects know this.</p>
+<p>The gap is not cryptographic. It is that no one has connected the claim to the evidence in a way that fails loudly when the two diverge.</p>
+
+<h2 id="what">3. What SourceMint is</h2>
+<p>SourceMint is a small, deliberately unambitious experiment in closing that gap. It has two parts:</p>
+<ul>
+<li><strong>A reference deployment.</strong> A complete, reproducible path from a Foundry project to a verified contract on Base mainnet — tests, gas snapshots, CI, deployment scripts and recorded deployment artifacts, all public.</li>
+<li><strong>An enforced accounting discipline.</strong> A public ledger of every project-wallet movement, and a program that checks the ledger against the chain automatically.</li>
+</ul>
+<p>The token is the unit that makes the second part meaningful: something has to move for the accounting to be about anything.</p>
+
+<h2 id="contract">4. The contract</h2>
+<table>
+<tr><th>Property</th><th>Value</th></tr>
+<tr><td>Name / symbol</td><td>SourceMint / SRCMNT</td></tr>
+<tr><td>Standard</td><td>ERC-20, with ERC20Burnable and ERC20Permit (EIP-2612)</td></tr>
+<tr><td>Decimals</td><td>18</td></tr>
+<tr><td>Network</td><td>Base mainnet (chain ID 8453)</td></tr>
+<tr><td>Address</td><td class="mono">0x914F6b6a0DaD39A3CB932dcf4D1af885C7c08EeB</td></tr>
+<tr><td>Total supply</td><td>1,000,000 SRCMNT, fixed</td></tr>
+<tr><td>Owner / admin functions</td><td>None</td></tr>
+<tr><td>Mint after deployment</td><td>Impossible</td></tr>
+<tr><td>Transfer fees, pause, blocklist</td><td>None</td></tr>
+<tr><td>Source code</td><td>Verified on BaseScan and Blockscout</td></tr>
+</table>
+<p>The implementation is OpenZeppelin's audited ERC-20 base plus the Burnable and Permit extensions. The constructor mints the entire supply to the deployer and grants no privileges; there is no <code>Ownable</code>, no upgrade proxy and no post-deployment authority of any kind. Supply can therefore only decrease, and only when a holder chooses to burn.</p>
+<p class="note">The project's own contract code is public and verified on-chain. It has not been subject to an independent third-party security audit.</p>
+
+<h2 id="supply">5. Supply and distribution</h2>
+<p>All 1,000,000 SRCMNT were minted in the deployment transaction on 10 February 2026. There was no sale of any kind — no public sale, private sale, seed round or airdrop. Current allocation:</p>
+<table>
+<tr><th>Allocation</th><th>Amount</th><th>Share</th><th>Address</th><th>Purpose</th></tr>
+<tr><td>Treasury</td><td>890,000</td><td>89%</td><td class="mono">0x497d34b1d0790f374B32467093d303533399c819</td><td>Long-term project treasury</td></tr>
+<tr><td>Rewards</td><td>100,000</td><td>10%</td><td class="mono">0x1af3cBcE941a2AC9D987E853b5385b05c405E16F</td><td>Contributor rewards</td></tr>
+<tr><td>Liquidity</td><td>10,000</td><td>1%</td><td class="mono">0xffD6c93bB4749830DCD55a540E6800CEaBBfcFD8</td><td>ETH/SRCMNT pool on Aerodrome</td></tr>
+</table>
+<p>There is no vesting schedule, because there are no investors, founders' allocations or team tokens to vest — the entire supply sits in the two project wallets and the liquidity pool listed above. Every movement between them is recorded in the ledger described in the next section.</p>
+
+<h2 id="invariant">6. The accounting invariant</h2>
+<p>The project's central claim is narrow enough to be testable:</p>
+<p class="note">Every transfer of SRCMNT out of a project wallet is recorded in a public ledger, with a stated reason.</p>
+<p>The ledger is <code>rewards/ledger.json</code> in the repository. Each entry records the transaction hash, sender, recipient, amount and — the part a blockchain cannot supply — the reason for the movement.</p>
+<p>The verifier, <code>script/verify_ledger.py</code>, reads the token's complete transfer history from a public indexer and compares it to the ledger in both directions: an on-chain movement out of a project wallet with no ledger entry is a failure, and a ledger entry with no on-chain counterpart is equally a failure. Transfers between third parties are outside project accounting and are ignored.</p>
+<p>A GitHub Actions workflow runs the verifier on every push, on every pull request, and weekly on a schedule. The weekly run matters most: the claim is re-tested even when no one is committing code. The verifier distinguishes an accounting violation (build fails) from an unreachable data source (build warns), so an indexer outage is never reported as a discrepancy. Because each run re-checks the entire transfer history rather than a delta, a deferred check loses nothing.</p>
+<p>Anyone can run the same check independently: <code>python3 script/verify_ledger.py</code> against a clone of the repository. It reads public chain data and produces the same answer for a stranger as it does for CI.</p>
+
+<h2 id="rewards">7. How rewards work</h2>
+<p>Rewards are paid for merged contributions to the repository — code, documentation, test coverage, tooling improvements, or reproducible bug reports with fixes — at the maintainer's discretion, under a <a href="https://github.com/khalidsaidi/sourcemint/blob/main/REWARDS.md">published policy</a>.</p>
+<p>A contributor opens a pull request and includes a Base address if they wish to be rewarded. If the work is merged and a reward is assigned, payment is sent from the rewards wallet and the transaction is added to the ledger with the pull request as its stated reason. Reward sizes are set per contribution; there is no fixed price list. Spam, cosmetic churn and contributions made solely to farm rewards are not rewarded.</p>
+<p>SRCMNT has no established market value. Rewards are recognition within the project, not payment for work and not an investment.</p>
+
+<h2 id="liquidity">8. Liquidity</h2>
+<p>On 28 August 2026 the treasury seeded a public ETH/SRCMNT pool on Aerodrome (basic volatile, 0.3%) with 10,000 SRCMNT and 0.012 ETH, so that a reward can be exchanged rather than being purely symbolic. That deposit is recorded in the ledger like any other project-wallet movement, and the LP position is held by the treasury wallet.</p>
+<p>The pool is permissionless: anyone may trade against it or add liquidity. Its price is set by the market, not by the project. The pool is small, and the project makes no commitment to maintain, deepen or withdraw it beyond recording whatever it does in the ledger.</p>
+
+<h2 id="governance">9. Governance and control</h2>
+<p>There is no on-chain governance, no DAO and no voting token. The contract grants no one any authority over it — including its author — because it has no privileged functions at all.</p>
+<p>What remains discretionary is off-chain: which contributions are rewarded, and what the treasury does with the tokens it holds. That discretion belongs to the maintainer, and the accounting invariant is what constrains it: any exercise of it is visible, reasoned and machine-checked. Reward decisions and treasury activity are discussed in the open on GitHub.</p>
+
+<h2 id="roadmap">10. Roadmap</h2>
+<table>
+<tr><th>When</th><th>Item</th><th>Status</th></tr>
+<tr><td>Q3 2026</td><td>Publish contributor reward policy</td><td>Done — <a href="https://github.com/khalidsaidi/sourcemint/blob/main/REWARDS.md">REWARDS.md</a></td></tr>
+<tr><td>Q3 2026</td><td>Public ledger and CI enforcement</td><td>Done</td></tr>
+<tr><td>Q3 2026</td><td>Treasury split and liquidity, both ledgered</td><td>Done</td></tr>
+<tr><td>Q4 2026</td><td>Begin distributing rewards to contributors</td><td>Open for contributions</td></tr>
+<tr><td>Q4 2026</td><td>Periodic treasury reports published on this site</td><td>Planned</td></tr>
+<tr><td>2027</td><td>Further tooling: reward claim scripts, permit-based claims</td><td>Planned</td></tr>
+</table>
+
+<h2 id="risks">11. Risks and limitations</h2>
+<p>Stated plainly, because a document that lists only strengths is not informative:</p>
+<ul>
+<li><strong>The invariant proves accounting, not honesty.</strong> The "reason" field is free text. It proves that every project-wallet movement is disclosed and reasoned, not that the reason given is truthful.</li>
+<li><strong>It covers only declared wallets.</strong> Like any self-reported scheme, it cannot cover a wallet nobody declared.</li>
+<li><strong>Concentrated supply.</strong> 89% of supply sits in a single treasury wallet controlled by one person. Movements are constrained by disclosure, not by code.</li>
+<li><strong>Single maintainer.</strong> This is a one-person project. It carries the continuity risk that implies.</li>
+<li><strong>Thin liquidity.</strong> The pool is small, so the market price is easily moved and may not reflect anything meaningful.</li>
+<li><strong>No third-party audit.</strong> The contract uses audited OpenZeppelin components but has not itself been audited.</li>
+<li><strong>No guarantee of value.</strong> SRCMNT is not offered as an investment, carries no claim on anything, and nothing in this document is financial advice.</li>
+</ul>
+
+<h2 id="refs">12. References</h2>
+<ul>
+<li>Website: <a href="https://srcmnt.xyz">srcmnt.xyz</a></li>
+<li>Repository: <a href="https://github.com/khalidsaidi/sourcemint">github.com/khalidsaidi/sourcemint</a></li>
+<li>Reward policy: <a href="https://github.com/khalidsaidi/sourcemint/blob/main/REWARDS.md">REWARDS.md</a></li>
+<li>Public ledger: <a href="https://github.com/khalidsaidi/sourcemint/blob/main/rewards/ledger.json">rewards/ledger.json</a></li>
+<li>Method write-up: <a href="writing/ledger-ci.html">Make the build fail when the treasury moves</a></li>
+<li>Contract on BaseScan: <a href="https://basescan.org/address/0x914f6b6a0dad39a3cb932dcf4d1af885c7c08eeb#code">verified source</a></li>
+<li>Maintainer: Khalid Saidi — <a href="https://www.linkedin.com/in/khalid-saidi-652b96/">LinkedIn</a> · <a href="https://github.com/khalidsaidi">GitHub</a> · <a href="https://khalidsaidi.com">khalidsaidi.com</a></li>
+<li>Contact: <a href="mailto:contact@srcmnt.xyz">contact@srcmnt.xyz</a></li>
+</ul>
+</article>
+</div>
+<footer><div class="wrap"><a href="./">← Back to SourceMint</a></div></footer>
+</body>
+</html>
