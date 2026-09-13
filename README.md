@@ -12,7 +12,7 @@ recorded in [`rewards/ledger.json`](rewards/ledger.json) with a reason, and
 [CI verifies the ledger against the chain](.github/workflows/ledger.yml) — an
 unaccounted movement fails the build in public.
 
-Website: https://srcmnt.xyz
+Website: https://srcmnt.xyz · X: https://x.com/srcmnt
 
 Open-source ERC20 token contract built with Foundry.
 
