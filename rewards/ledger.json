@@ -31,7 +31,7 @@
       "from": "0x497d34b1d0790f374B32467093d303533399c819",
       "to": "0xffD6c93bB4749830DCD55a540E6800CEaBBfcFD8",
       "amount": "10000",
-      "reason": "Treasury liquidity provision: seed the ETH/SRCMNT pool on Aerodrome (basic volatile, 0.3%) with 10,000 SRCMNT and 0.012 ETH, so contributor rewards are exchangeable rather than symbolic. LP tokens are held by the treasury wallet.",
+      "reason": "Treasury liquidity provision: seed the ETH/SRCMNT pool on Aerodrome (basic volatile, 0.3%) with 10,000 SRCMNT and 0.012 ETH, so contributor rewards are exchangeable rather than symbolic. LP tokens were held by the treasury wallet until 2026-09-15, when 100% of them were burned to 0x000000000000000000000000000000000000dEaD (tx 0x5a1da78358537ed40041dd568c2e76e62c67b2e362b76b2613cbcfb053a9e1bc): the liquidity is now permanently locked and cannot be withdrawn by anyone.",
       "ref": "https://basescan.org/address/0xffD6c93bB4749830DCD55a540E6800CEaBBfcFD8"
     }
   ]
