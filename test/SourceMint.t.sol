@@ -5,7 +5,6 @@ import { Test, console } from "forge-std/Test.sol";
 import { SourceMint } from "../src/SourceMint.sol";
 import { ERC20Permit } from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 
-
 contract SourceMintTest is Test {
     SourceMint token;
 
@@ -14,7 +13,8 @@ contract SourceMintTest is Test {
     address bob = address(0xB0B);
     address user = address(0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266);
 
-    uint256 private constant PRIVATE_KEY = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
+    uint256 private constant PRIVATE_KEY =
+        0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
 
     function setUp() public {
         token = new SourceMint(INITIAL_SUPPLY);
@@ -45,10 +45,7 @@ contract SourceMintTest is Test {
 
         vm.prank(relayer);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                ERC20Permit.ERC2612ExpiredSignature.selector,
-                deadline
-            )
+            abi.encodeWithSelector(ERC20Permit.ERC2612ExpiredSignature.selector, deadline)
         );
         token.permit(signer, spender, value, deadline, v, r, s);
 
