@@ -1,5 +1,19 @@
 # GCP Cloud Build (CI + Manual Deploy)
 
+## Website hosting
+
+The static website in `docs/` is deployed to Firebase Hosting in project
+`sourcemint-prod-260210-28679`:
+
+```bash
+firebase deploy --only hosting --project sourcemint-prod-260210-28679
+```
+
+The `srcmnt.xyz` custom domain must be connected to the Firebase Hosting site
+before it stops serving the existing GitHub Pages deployment. Keep the
+GitHub Pages source configured until the Firebase custom domain has an active
+certificate and the homepage, whitepaper, and `/auth/action/` have been checked.
+
 This repo uses **GCP-only automation**:
 - CI on push to `main` (no secrets used)
 - Manual-only deploy trigger for Base mainnet (secrets from Secret Manager)

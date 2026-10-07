@@ -16,3 +16,5 @@ reports/
 # Agent workspace (keep README only)
 .ai/*
 !.ai/README.md
+# Firebase local emulator/deployment cache
+.firebase/
