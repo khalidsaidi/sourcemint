@@ -22,7 +22,7 @@ def decode_transfer(log):
 
     if(log["topics"][0] != TRANSFER_TOPIC):
         raise ValueError("topics[0] must be Transfer signature")
-    
+
     sender_topics = log["topics"][1]
     receiver_topics = log["topics"][2]
 
@@ -31,6 +31,12 @@ def decode_transfer(log):
 
     if len(receiver_topics) != 66:
         raise ValueError("Invalid receiver topic length")
+
+    for name, topic in (("sender", sender_topics), ("receiver", receiver_topics)):
+        if not topic.startswith("0x"):
+            raise ValueError(f"{name} topic must start with 0x")
+        if any(char not in "0123456789abcdefABCDEF" for char in topic[2:]):
+            raise ValueError(f"{name} topic must contain only hex characters")
 
     sender = "0x" + sender_topics[-40:]
     receiver = "0x" + receiver_topics[-40:]
@@ -66,6 +72,3 @@ if __name__ == "__main__":
 
     print(result)
     print("All assertion PASS")
-
-
-    

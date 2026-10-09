@@ -5,6 +5,24 @@ from copy import deepcopy
 from script.decode_transfer_fixture import decode_transfer, log
 
 class TestDecodeTransfer(unittest.TestCase):
+    def test_rejects_invalid_address_topic_prefix(self):
+        for index, name in ((1, "sender"), (2, "receiver")):
+            with self.subTest(topic=name):
+                bad_log = deepcopy(log)
+                bad_log["topics"][index] = "zz" + "11" * 32
+                with self.assertRaisesRegex(ValueError, f"^{name} topic must start with 0x$"):
+                    decode_transfer(bad_log)
+
+    def test_rejects_non_hex_address_topics(self):
+        for index, name in ((1, "sender"), (2, "receiver")):
+            with self.subTest(topic=name):
+                bad_log = deepcopy(log)
+                bad_log["topics"][index] = "0x" + "zz" * 32
+                with self.assertRaisesRegex(
+                    ValueError, f"^{name} topic must contain only hex characters$"
+                ):
+                    decode_transfer(bad_log)
+
     def test_rejects_wrong_event_signature(self):
         bad_log = deepcopy(log)
         bad_log["topics"][0] = "0x" + "00" * 32
@@ -82,6 +100,5 @@ class TestDecodeTransfer(unittest.TestCase):
                     "transaction_hash": valid_log["transactionHash"],
                     "total": {"value": str(value)},
                 })
-
 
 

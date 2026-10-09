@@ -18,3 +18,7 @@ reports/
 !.ai/README.md
 # Firebase local emulator/deployment cache
 .firebase/
+
+# Python
+__pycache__/
+*.pyc
