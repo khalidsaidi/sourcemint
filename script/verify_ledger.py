@@ -25,9 +25,19 @@ Run: python3 script/verify_ledger.py
 import json
 import sys
 import time
+import re
+import os
 import urllib.parse
 import urllib.request
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 from pathlib import Path
+
+if __package__:
+    from .fetch_rpc_transfers import fetch_rpc_transfers
+else:
+    from fetch_rpc_transfers import fetch_rpc_transfers
+
 
 LEDGER_PATH = Path(__file__).resolve().parent.parent / "rewards" / "ledger.json"
 
@@ -47,7 +57,7 @@ class SourceUnavailable(Exception):
 def _get_page(url: str, params: dict) -> dict:
     """One page, retried with exponential backoff. Raises SourceUnavailable."""
     full = url + ("?" + urllib.parse.urlencode(params) if params else "")
-    req = urllib.request.Request(full, headers={"User-Agent": "sourcemint-ledger-verifier"})
+    req = Request(full, headers={"User-Agent": "sourcemint-ledger-verifier"})
     last = None
     for attempt in range(ATTEMPTS_PER_SOURCE):
         try:
@@ -64,8 +74,36 @@ def _get_page(url: str, params: dict) -> dict:
     raise SourceUnavailable(last or "unknown error")
 
 
+def rpc_call(payload: dict) -> dict:
+    endpoint = os.environ.get("BASE_RPC_URL")
+    if not endpoint:
+        raise SourceUnavailable("BASE_RPC_URL is not configured")
+
+    body = json.dumps(payload).encode("utf-8")
+
+    http_request = Request(
+        url=endpoint,
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "sourcemint-ledger-verifier",
+        },
+        method="POST",
+    )
+
+    try:
+        with urlopen(http_request, timeout=10) as resp:
+            return json.load(resp)
+    except HTTPError as e:
+        raise SourceUnavailable(f"RPC HTTP {e.code}") from e
+    except (URLError, TimeoutError, json.JSONDecodeError) as e:
+        raise SourceUnavailable(
+            f"RPC transport/JSON failure: {type(e).__name__}"
+        ) from e
+
+
 def fetch_transfers(token: str):
-    """Yield every transfer for the token, trying each source in turn."""
+    """Return complete transfer history; discard partial data on failure."""
     problems = []
     for template in SOURCES:
         url = template.format(token=token)
@@ -73,9 +111,20 @@ def fetch_transfers(token: str):
             items, params = [], {}
             while True:
                 page = _get_page(url, params)
-                items.extend(page.get("items", []))
+                if not isinstance(page, dict):
+                    raise SourceUnavailable("Primary response must be an object")
+                if not isinstance(page.get("items"), list):
+                    raise SourceUnavailable("Primary items missing or invalid")
+                if "next_page_params" not in page:
+                    raise SourceUnavailable("Primary pagination field missing")
+
                 nxt = page.get("next_page_params")
-                if not nxt:
+
+                if nxt is not None and (not isinstance(nxt, dict) or not nxt):
+                    raise SourceUnavailable("Primary pagination invalid")
+
+                items.extend(page.get("items", []))
+                if nxt is None:
                     break
                 params = nxt
             if template is not SOURCES[0]:
@@ -83,6 +132,51 @@ def fetch_transfers(token: str):
             return items
         except SourceUnavailable as e:
             problems.append(f"{url.split('/')[2]}: {e}")
+
+
+    start_block = 41988939
+    try:
+        response = rpc_call({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "eth_blockNumber",
+            "params": [],
+        })
+
+        if not isinstance(response, dict):
+            raise SourceUnavailable("RPC response must be an object")
+
+        if (
+            response.get("jsonrpc") != "2.0"
+            or type(response.get("id")) is not int
+            or response.get("id") != 1
+            or "error" in response
+        ):
+            raise SourceUnavailable("Invalid or failed block-number response")
+
+        result = response.get("result")
+
+        if (
+            not isinstance(result, str)
+            or re.fullmatch(r"0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)", result) is None
+        ):
+            raise SourceUnavailable("Invalid RPC block number")
+
+        end_block = int(result, 16)
+
+        if end_block < start_block:
+            raise SourceUnavailable("RPC head is before start_block")
+
+        try:
+            transfers = fetch_rpc_transfers(token, start_block, end_block, rpc_call)
+            print("note: primary source unavailable, used RPC fallback")
+            return transfers
+        except ValueError as e:
+            raise SourceUnavailable(f"RPC data validation failed {e}") from e
+
+    except SourceUnavailable as e:
+        problems.append(f"RPC: {e}")
+
     raise SourceUnavailable("; ".join(problems))
 
 
