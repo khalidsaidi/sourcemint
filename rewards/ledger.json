@@ -33,6 +33,14 @@
       "amount": "10000",
       "reason": "Treasury liquidity provision: seed the ETH/SRCMNT pool on Aerodrome (basic volatile, 0.3%) with 10,000 SRCMNT and 0.012 ETH, so contributor rewards are exchangeable rather than symbolic. LP tokens were held by the treasury wallet until 2026-09-15, when 100% of them were burned to 0x000000000000000000000000000000000000dEaD (tx 0x5a1da78358537ed40041dd568c2e76e62c67b2e362b76b2613cbcfb053a9e1bc): the liquidity is now permanently locked and cannot be withdrawn by anyone.",
       "ref": "https://basescan.org/address/0xffD6c93bB4749830DCD55a540E6800CEaBBfcFD8"
+    },
+    {
+      "tx": "0x9734a14c542c546e8f87b6d366ada73ab44b1f04acbca4a6ff1fdb5b724a6889",
+      "date": "2026-10-19",
+      "from": "0x1af3cBcE941a2AC9D987E853b5385b05c405E16F",
+      "to": "0x7Be179c6Aa4cD1C4B3cDFbeF574c955DABa2c70c",
+      "amount": "500",
+      "reason": "Contributor reward to @Chandain for pull request #5 (https://github.com/khalidsaidi/sourcemint/pull/5), 'test: cover immutability claims and permit behavior', merged 2026-10-07 as 7e740dd: Foundry tests asserting that no mint, fee, pause or owner entry point exists, and EIP-2612 permit coverage including a relayer-submitted signature, replay rejection and expired-deadline rejection. First contributor reward paid by the project. Amount set by the published tier for scoped feature or test work."
     }
   ]
 }
