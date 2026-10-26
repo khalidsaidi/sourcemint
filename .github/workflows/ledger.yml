@@ -26,6 +26,8 @@ jobs:
         with:
           persist-credentials: false
       - name: Verify ledger against Base mainnet
+        env:
+          BASE_RPC_URL: https://mainnet.base.org
         run: |
           set +e
           python3 script/verify_ledger.py
