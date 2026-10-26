@@ -41,6 +41,14 @@
       "to": "0x7Be179c6Aa4cD1C4B3cDFbeF574c955DABa2c70c",
       "amount": "500",
       "reason": "Contributor reward to @Chandain for pull request #5 (https://github.com/khalidsaidi/sourcemint/pull/5), 'test: cover immutability claims and permit behavior', merged 2026-10-07 as 7e740dd: Foundry tests asserting that no mint, fee, pause or owner entry point exists, and EIP-2612 permit coverage including a relayer-submitted signature, replay rejection and expired-deadline rejection. First contributor reward paid by the project. Amount set by the published tier for scoped feature or test work."
+    },
+    {
+      "tx": "0xb37f86014d8aee58e2575e4826b3802ba2cdcee29917a160c0ea6f9984269d00",
+      "date": "2026-10-26",
+      "from": "0x1af3cBcE941a2AC9D987E853b5385b05c405E16F",
+      "to": "0x7Be179c6Aa4cD1C4B3cDFbeF574c955DABa2c70c",
+      "amount": "1000",
+      "reason": "Contributor reward to @Chandain for pull request #8 (https://github.com/khalidsaidi/sourcemint/pull/8), 'Add fail-closed RPC fallback for ledger verification', merged 2026-10-26 as b75719f, closing issue #1: a keyless verification path that confirms each ledger entry by transaction receipt and reconciles project-wallet balances against total supply, so a Blockscout outage no longer stops the ledger from being verified. Amount set by the published tier for substantial work."
     }
   ]
 }
