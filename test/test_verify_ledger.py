@@ -471,7 +471,9 @@ class TestLedgerFallback(unittest.TestCase):
         )
 
         self.assertEqual(exit_code, 1)
-        self.assertIn("Balances not matched", output)
+        self.assertIn("ACCOUNTING VIOLATION", output)
+        self.assertIn("unaccounted", output)
+        self.assertIn("RESULT: FAIL", output)
         self.assertNotIn("COULD NOT VERIFY", output)
         self.assertEqual(rpc.call_count, 3)
 

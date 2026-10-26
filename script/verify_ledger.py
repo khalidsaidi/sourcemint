@@ -291,7 +291,11 @@ def verify_rpc_fallback(ledger, token, rpc):
                 matched = True
 
             if (not matched):
-                raise AccountingViolation(f"Ledger not matched wit RPC respons: {entry["tx"]} ")
+                raise AccountingViolation(
+                    "no matching Transfer log on-chain for ledger entry "
+                    f"{entry['tx']} ({entry['amount']} SRCMNT to {entry['to']}). "
+                    "The entry claims a movement the chain does not show."
+                )
 
     verify_balances_total_supply(ledger, token, rpc)
 
@@ -301,6 +305,14 @@ def verify_rpc_fallback(ledger, token, rpc):
     )
 
     return 0
+
+def _srcmnt(wei, signed=False):
+    """Whole-token rendering for operator-facing messages. Integer math only."""
+    sign = "+" if (signed and wei > 0) else ("-" if wei < 0 else "")
+    whole, frac = divmod(abs(wei), DECIMALS)
+    body = f"{whole:,}" if frac == 0 else f"{whole:,}.{frac:018d}".rstrip("0").rstrip(".")
+    return sign + body
+
 
 def calculate_expected_state(ledger):
     balances = {}
@@ -378,7 +390,7 @@ def verify_balances_total_supply(ledger, token, rpc):
     })
     block = _rpc_result(response_block, "eth_blockNumber")
 
-    for address in wallets.values():
+    for name, address in wallets.items():
         address = address.lower()
 
         response_balance = rpc({
@@ -402,7 +414,13 @@ def verify_balances_total_supply(ledger, token, rpc):
 
 
         if (actual_amount != expected_amount):
-            raise AccountingViolation("Balances not matched")
+            delta = actual_amount - expected_amount
+            raise AccountingViolation(
+                f"{name} wallet {address} holds {_srcmnt(actual_amount)} SRCMNT, "
+                f"but the ledger accounts for {_srcmnt(expected_amount)} "
+                f"({_srcmnt(delta, signed=True)} unaccounted). "
+                "A transfer out of a project wallet is missing from rewards/ledger.json."
+            )
 
     response_total_supply = rpc({
             "jsonrpc": "2.0",
@@ -451,7 +469,9 @@ def main() -> int:
             print(f"COULD NOT VERIFY: {rpc_error}")
             return 2
         except AccountingViolation as rpc_error:
-            print(f"Data: {rpc_error}")
+            print("\nACCOUNTING VIOLATION (degraded fallback):")
+            print(f"  {rpc_error}")
+            print("\nRESULT: FAIL")
             return 1
 
     for t in transfers:

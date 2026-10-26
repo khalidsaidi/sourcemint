@@ -302,7 +302,7 @@ class TestVerifyBalances(unittest.TestCase):
         ledger = make_mock_ledger()
         fake_rpc = make_fake_rpc(0, 1)
 
-        with self.assertRaisesRegex(AccountingViolation, "Balances not matched"):
+        with self.assertRaisesRegex(AccountingViolation, "unaccounted"):
             verify_balances_total_supply(ledger, TOKEN, fake_rpc)
 
     def test_verify_balances(self):
