@@ -63,7 +63,6 @@ LIVE_SPENDERS = []
 LOGS_RPC_URL = os.environ.get(
     "BASE_LOGS_RPC_URL", "https://base.gateway.tenderly.co")
 DECIMALS = 10**18
-ATTEMPTS_PER_SOURCE = 3   # 3 attempts; 2s + 4s backoff before RPC fallback
 ZERO_ADDRESS = "0x" + "00" * 20
 # Approval(address indexed owner, address indexed spender, uint256 value)
 ALLOWANCE_SELECTOR = "0xdd62ed3e"
@@ -118,10 +117,14 @@ def is_hex_bytes(value, size):
 # finishes in well under a minute.
 RPC_MIN_INTERVAL = float(os.environ.get("BASE_RPC_MIN_INTERVAL", "0.05"))
 _last_call = [0.0]
+_pace = [RPC_MIN_INTERVAL]      # grows if the endpoint pushes back
+# ~180 sequential calls: a shared CI egress IP gets throttled where a laptop
+# does not, so give up only after a few minutes rather than a few seconds.
+RPC_ATTEMPTS = int(os.environ.get("BASE_RPC_ATTEMPTS", "6"))
 
 
 def rpc_call(payload: dict, endpoint: str = None) -> dict:
-    wait = RPC_MIN_INTERVAL - (time.monotonic() - _last_call[0])
+    wait = _pace[0] - (time.monotonic() - _last_call[0])
     if wait > 0:
         time.sleep(wait)
     _last_call[0] = time.monotonic()

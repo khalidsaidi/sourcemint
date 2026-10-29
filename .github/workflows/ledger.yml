@@ -38,6 +38,8 @@ jobs:
           # eth_getLogs, so the log reads go elsewhere. Both public, no key.
           BASE_RPC_URL: https://mainnet.base.org
           BASE_LOGS_RPC_URL: https://base.gateway.tenderly.co
+          # Shared runner egress gets throttled where a laptop does not.
+          BASE_RPC_MIN_INTERVAL: "0.25"
         run: |
           set +e
           python3 script/verify_ledger.py
