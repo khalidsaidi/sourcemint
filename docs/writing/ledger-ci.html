@@ -89,7 +89,7 @@ footer{font-family:"Source Sans 3",sans-serif;font-size:.95rem;color:var(--dim);
 
   <h2>The checker</h2>
 
-  <p>A script pulls the token's complete transfer history from a public indexer and walks it. For each transfer it asks one question: did this leave a project wallet?</p>
+  <p>A script derives the token's complete transfer history from the chain — paging <code>eth_getLogs</code> from the deployment block, needing no API key and nobody's permission — and walks it. For each transfer it asks one question: did this leave a project wallet?</p>
 
 <pre>is_mint = frm == "0x" + "0" * 40
 if not (is_mint or frm in wallets):
@@ -104,7 +104,7 @@ if not (is_mint or frm in wallets):
 <pre>if amount_wei % DECIMALS == 0:
     amount = str(amount_wei // DECIMALS)</pre>
 
-  <p><strong>Retries, because indexers are flaky.</strong> The public indexer this uses returned HTTP 500 for roughly 7 of 10 requests during one stretch of testing. A verifier that treats a bad afternoon as an accounting violation is a verifier people learn to ignore, so transient 5xx responses get exponential backoff and only genuine mismatches fail the run.</p>
+  <p><strong>Retries, because networks are flaky.</strong> The public indexer this originally relied on returned HTTP 500 for roughly 7 of 10 requests during one stretch of testing. A verifier that treats a bad afternoon as an accounting violation is a verifier people learn to ignore, so transient 5xx responses get exponential backoff and only genuine mismatches fail the run.</p>
 
   <h2>The enforcement</h2>
 

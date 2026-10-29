@@ -10,7 +10,16 @@ permissions: {}
 on:
   push:
     branches: ["main"]
+  # Pull requests cannot change on-chain state, so the ledger only needs
+  # re-verifying when the PR touches the ledger itself.
   pull_request:
+    paths:
+      - "rewards/ledger.json"
+      - "script/verify_ledger.py"
+      - "script/fetch_rpc_transfers.py"
+      - "script/block_windows.py"
+      - "script/decode_transfer_fixture.py"
+      - ".github/workflows/ledger.yml"
   schedule:
     - cron: "17 6 * * 1"
   workflow_dispatch:
@@ -19,6 +28,10 @@ jobs:
   verify:
     name: Verify on-chain accounting
     runs-on: ubuntu-latest
+    # Deriving the full history from the chain is ~11,000 sequential
+    # eth_getLogs calls, about two hours. Indexers make it seconds when they
+    # answer; this budget is what independence from them costs.
+    timeout-minutes: 180
     permissions:
       contents: read
     steps:
@@ -34,7 +47,10 @@ jobs:
           python3 -B -m unittest discover -s script -p 'test_ledger_schema.py'
       - name: Verify ledger against Base mainnet
         env:
-          BASE_RPC_URL: https://mainnet.base.org
+          # Any public endpoint works. mainnet.base.org refuses eth_getLogs,
+          # so it cannot carry the chain path on its own.
+          BASE_RPC_URL: https://base.gateway.tenderly.co
+          BASE_RPC_WINDOW: "1000"
         run: |
           set +e
           python3 script/verify_ledger.py
