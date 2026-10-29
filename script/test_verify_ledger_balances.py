@@ -87,11 +87,17 @@ def make_fake_rpc(
                 response if isinstance(response, bytes)
                 else json.dumps(response).encode("utf-8")
             )
-            transport_options = {"return_value": BytesIO(body)}
+            # A fresh stream per call: rpc_call retries, and the first
+            # attempt closes whatever it was handed.
+            transport_options = {"side_effect": lambda *_a, **_k: BytesIO(body)}
 
         with patch.dict(os.environ, {"BASE_RPC_URL": FAKE_RPC_URL}):
-            with patch("script.verify_ledger.urlopen", **transport_options):
-                return rpc_call(payload)
+            # rpc_call retries transient failures with exponential backoff.
+            # These tests are about which error maps to which message, not
+            # about waiting a minute to find out.
+            with patch("script.verify_ledger.time.sleep"):
+                with patch("script.verify_ledger.urlopen", **transport_options):
+                    return rpc_call(payload)
 
     def fake_rpc(payload):
         nonlocal block

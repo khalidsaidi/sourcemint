@@ -123,6 +123,30 @@ _pace = [RPC_MIN_INTERVAL]      # grows if the endpoint pushes back
 RPC_ATTEMPTS = int(os.environ.get("BASE_RPC_ATTEMPTS", "6"))
 
 
+# JSON-RPC error codes that mean "ask again later" rather than "you asked for
+# something impossible". -32005 is the standard limit-exceeded code; providers
+# also use -32011 and -32097 for their own throttling. -32000 is deliberately
+# absent: it is the generic server-error code and carries no meaning, so
+# retrying it would retry permanent failures six times over. A provider that
+# throttles with -32000 will say so in the message, which is checked below.
+_TRANSIENT_RPC_CODES = {-32005, -32011, -32097}
+_TRANSIENT_RPC_WORDS = ("rate", "limit", "throttl", "timeout", "timed out",
+                        "capacity", "overloaded", "try again", "too many")
+
+
+def _is_transient(error: dict) -> bool:
+    """Whether a JSON-RPC error is worth retrying.
+
+    An HTTP 200 whose body is an error is the easiest throttle to mistake for
+    a permanent failure; a range that is too large looks identical at the
+    transport layer and must not be retried.
+    """
+    if error.get("code") in _TRANSIENT_RPC_CODES:
+        return True
+    blob = f"{error.get('message', '')} {error.get('data', '')}".lower()
+    return any(word in blob for word in _TRANSIENT_RPC_WORDS)
+
+
 def rpc_call(payload: dict, endpoint: str = None) -> dict:
     wait = _pace[0] - (time.monotonic() - _last_call[0])
     if wait > 0:
@@ -145,15 +169,35 @@ def rpc_call(payload: dict, endpoint: str = None) -> dict:
         method="POST",
     )
 
-    try:
-        with urlopen(http_request, timeout=10) as resp:
-            return json.load(resp)
-    except HTTPError as e:
-        raise SourceUnavailable(f"RPC HTTP {e.code}") from e
-    except (URLError, TimeoutError, json.JSONDecodeError) as e:
-        raise SourceUnavailable(
-            f"RPC transport/JSON failure: {type(e).__name__}"
-        ) from e
+    # Deriving history is ~180 sequential calls. One blip must not discard the
+    # run, and throttling arrives in three different shapes: an HTTP status, a
+    # dropped connection, or — the one that is easy to miss — a perfectly
+    # successful HTTP 200 whose JSON-RPC body carries an error. All three are
+    # transient and all three are retried.
+    last = None
+    cause = None          # keep the original exception so the traceback survives
+    for attempt in range(RPC_ATTEMPTS):
+        try:
+            with urlopen(http_request, timeout=30) as resp:
+                response = json.load(resp)
+        except HTTPError as e:
+            if e.code not in (429, 500, 502, 503, 504):
+                raise SourceUnavailable(f"RPC HTTP {e.code}") from e
+            last, cause = f"RPC HTTP {e.code}", e
+            if e.code == 429:
+                _pace[0] = min(max(_pace[0], 0.05) * 2, 1.0)
+        except (URLError, TimeoutError, json.JSONDecodeError) as e:
+            last, cause = f"RPC transport/JSON failure: {type(e).__name__}", e
+        else:
+            error = response.get("error") if isinstance(response, dict) else None
+            if not isinstance(error, dict) or not _is_transient(error):
+                return response
+            last = f"RPC error {error.get('code')}: {str(error.get('message'))[:60]}"
+            _pace[0] = min(max(_pace[0], 0.05) * 2, 1.0)
+
+        if attempt < RPC_ATTEMPTS - 1:
+            time.sleep(2 ** (attempt + 1))
+    raise SourceUnavailable(last or "unknown RPC error") from cause
 
 def derive_transfers(token: str, wallets):
     """Every SRCMNT movement involving a project wallet, derived from the chain.
