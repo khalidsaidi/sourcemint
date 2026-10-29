@@ -28,7 +28,6 @@ from collections import Counter
 import time
 import re
 import os
-import urllib.parse
 import urllib.request
 from decimal import Decimal, InvalidOperation
 from urllib.request import Request, urlopen
@@ -63,9 +62,6 @@ LIVE_SPENDERS = []
 # log reads go to BASE_LOGS_RPC_URL. Both are public and need no key.
 LOGS_RPC_URL = os.environ.get(
     "BASE_LOGS_RPC_URL", "https://base.gateway.tenderly.co")
-SOURCES = (
-    "https://base.blockscout.com/api/v2/tokens/{token}/transfers",
-)
 DECIMALS = 10**18
 ATTEMPTS_PER_SOURCE = 3   # 3 attempts; 2s + 4s backoff before RPC fallback
 ZERO_ADDRESS = "0x" + "00" * 20
@@ -115,26 +111,6 @@ def is_hex_bytes(value, size):
         and re.fullmatch(r"0x[0-9a-fA-F]{" + str(size * 2) + r"}", value)
         is not None
     )
-
-
-def _get_page(url: str, params: dict) -> dict:
-    """One page, retried with exponential backoff. Raises SourceUnavailable."""
-    full = url + ("?" + urllib.parse.urlencode(params) if params else "")
-    req = Request(full, headers={"User-Agent": "sourcemint-ledger-verifier"})
-    last = None
-    for attempt in range(ATTEMPTS_PER_SOURCE):
-        try:
-            with urllib.request.urlopen(req, timeout=3) as resp:
-                return json.load(resp)
-        except urllib.error.HTTPError as e:
-            last = f"HTTP {e.code}"
-            if e.code < 500:  # 4xx will not fix itself by waiting
-                break
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
-            last = type(e).__name__
-        if attempt < ATTEMPTS_PER_SOURCE - 1:
-            time.sleep(2 ** (attempt + 1))
-    raise SourceUnavailable(last or "unknown error")
 
 
 # Deriving history makes a couple of hundred calls back to back. Free
@@ -243,43 +219,18 @@ def derive_transfers(token: str, wallets):
 
 
 def fetch_transfers(token: str, wallets):
-    """Return complete transfer history; discard partial data on failure."""
-    problems = []
-    for template in SOURCES:
-        url = template.format(token=token)
-        try:
-            items, params = [], {}
-            while True:
-                page = _get_page(url, params)
-                if not isinstance(page, dict):
-                    raise SourceUnavailable("Primary response must be an object")
-                if not isinstance(page.get("items"), list):
-                    raise SourceUnavailable("Primary items missing or invalid")
-                if "next_page_params" not in page:
-                    raise SourceUnavailable("Primary pagination field missing")
+    """The complete transfer history, derived from the chain.
 
-                nxt = page.get("next_page_params")
+    There is one source and it is the chain. An indexer would answer faster,
+    but every one of them is somebody's service to withdraw — and a shortcut
+    that silently skips checks when it works is worse than no shortcut. If a
+    free, keyless indexer for Base reappears, it belongs here only if it
+    supplies the approvals too.
+    """
+    transfers, spenders = derive_transfers(token, wallets)
+    LIVE_SPENDERS.extend(spenders)
+    return transfers
 
-                if nxt is not None and (not isinstance(nxt, dict) or not nxt):
-                    raise SourceUnavailable("Primary pagination invalid")
-
-                items.extend(page.get("items", []))
-                if nxt is None:
-                    break
-                params = nxt
-            return items
-        except SourceUnavailable as e:
-            problems.append(f"{url.split('/')[2]}: {e}")
-
-    print(f"note: no indexer answered ({'; '.join(problems)});"
-          " deriving the history from the chain")
-    try:
-        transfers, spenders = derive_transfers(token, wallets)
-        LIVE_SPENDERS.extend(spenders)
-        return transfers
-    except SourceUnavailable as e:
-        problems.append(f"chain: {e}")
-    raise SourceUnavailable("; ".join(problems))
 
 def _srcmnt(wei, signed=False):
     """Whole-token rendering for operator-facing messages. Integer math only."""

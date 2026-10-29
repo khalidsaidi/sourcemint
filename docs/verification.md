@@ -47,14 +47,21 @@ That is deliberately strict. A live allowance does not mean anything has gone
 wrong — it means this check cannot prove that nothing has, and saying so is
 the point.
 
-## Indexers
+## There is no indexer
 
-The entries in `SOURCES` answer the same question in one request instead of
-roughly two hundred, so they are tried first. They are a shortcut, never a
-dependency — losing every one of them costs seconds.
+There was one, and it is gone. `base.blockscout.com` returns HTTP 403 to
+programmatic requests, and no free keyless indexer for Base serves this —
+Routescan does not support the chain, BaseScan's v1 API is deprecated,
+Etherscan's v2 requires a paid plan for 8453, and Blockscout's MCP server runs
+on a shared credit allowance that is routinely exhausted.
 
-As of 2026-10-29 `base.blockscout.com` returns HTTP 403 to programmatic
-requests, so runs take the chain path.
+It was briefly kept as a shortcut. That was a mistake: approvals are only
+collected while reading the chain, so a run that took the shortcut skipped the
+completeness guard and said nothing about it. A faster path that quietly
+checks less is worse than no faster path.
+
+If a free keyless indexer reappears it belongs here only if it supplies the
+`Approval` logs too.
 
 ## Configuration
 

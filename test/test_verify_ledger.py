@@ -46,27 +46,31 @@ def log(frm, to, wei):
             "transactionHash": "0x" + "ab" * 32}
 
 
-class SourceSelection(unittest.TestCase):
-    def test_an_answering_indexer_means_no_chain_derivation(self):
-        page = {"items": ["a transfer"], "next_page_params": None}
-        with (patch.object(verifier, "_get_page", return_value=page),
-              patch.object(verifier, "derive_transfers") as derive):
-            self.assertEqual(verifier.fetch_transfers(TOKEN, WALLETS), ["a transfer"])
-        derive.assert_not_called()
+class OneSource(unittest.TestCase):
+    """There is one source and it is the chain.
 
-    def test_the_chain_carries_it_when_no_indexer_answers(self):
-        with (patch.object(verifier, "_get_page",
-                           side_effect=verifier.SourceUnavailable("403")),
-              patch.object(verifier, "derive_transfers",
-                           return_value=(["derived"], set())) as derive):
+    An indexer would be faster, but it is somebody's service to withdraw, and
+    the approvals that guard completeness are only collected while reading the
+    chain. A shortcut that skips a check when it works is worse than none.
+    """
+
+    def test_history_always_comes_from_the_chain(self):
+        with patch.object(verifier, "derive_transfers",
+                          return_value=(["derived"], {"0xspender"})) as derive:
             self.assertEqual(verifier.fetch_transfers(TOKEN, WALLETS), ["derived"])
         derive.assert_called_once()
 
-    def test_both_failing_raises_rather_than_returning_nothing(self):
-        with (patch.object(verifier, "_get_page",
-                           side_effect=verifier.SourceUnavailable("403")),
-              patch.object(verifier, "derive_transfers",
-                           side_effect=verifier.SourceUnavailable("rpc down"))):
+    def test_approvals_found_while_reading_are_kept_for_the_allowance_check(self):
+        verifier.LIVE_SPENDERS.clear()
+        with patch.object(verifier, "derive_transfers",
+                          return_value=([], {"0xabc"})):
+            verifier.fetch_transfers(TOKEN, WALLETS)
+        self.assertIn("0xabc", verifier.LIVE_SPENDERS)
+        verifier.LIVE_SPENDERS.clear()
+
+    def test_a_failure_raises_rather_than_returning_nothing(self):
+        with patch.object(verifier, "derive_transfers",
+                          side_effect=verifier.SourceUnavailable("rpc down")):
             with self.assertRaises(verifier.SourceUnavailable):
                 verifier.fetch_transfers(TOKEN, WALLETS)
 
