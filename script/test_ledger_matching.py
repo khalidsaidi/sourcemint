@@ -25,12 +25,26 @@ TX = "0x" + "11" * 32
 WEI = str(500 * 10**18)
 
 
+MINT_TX = "0x" + "99" * 32
+
+# Every real ledger opens with the mint, so the treasury has a balance before
+# it spends. Without that, expected balances go negative and the fixture stops
+# resembling anything the verifier will ever see.
+MINT = {"tx": MINT_TX, "date": "2026-02-10", "from": "mint", "to": TREASURY,
+        "amount": "1000", "reason": "genesis mint"}
+PAYMENT = {"tx": TX, "date": "2026-10-28", "from": TREASURY, "to": OUTSIDE,
+           "amount": "500", "reason": "a payment"}
+
+
 def ledger(entries=None):
     return {"token": TOKEN, "chain_id": 8453,
             "project_wallets": {"treasury": TREASURY, "rewards": REWARDS},
-            "entries": entries if entries is not None else
-            [{"tx": TX, "date": "2026-10-28", "from": TREASURY, "to": OUTSIDE,
-              "amount": "500", "reason": "a payment"}]}
+            "entries": entries if entries is not None else [dict(MINT), dict(PAYMENT)]}
+
+
+def mint_transfer():
+    return transfer(frm=verifier.ZERO_ADDRESS, to=TREASURY,
+                    tx=MINT_TX, wei=str(1000 * 10**18))
 
 
 def transfer(frm=TREASURY, to=OUTSIDE, tx=TX, wei=WEI):
@@ -38,9 +52,33 @@ def transfer(frm=TREASURY, to=OUTSIDE, tx=TX, wei=WEI):
             "transaction_hash": tx, "total": {"value": wei}}
 
 
+def balances_for(led):
+    """RPC stub answering balanceOf/totalSupply exactly as the ledger implies.
+
+    The balance reconciliation is the complement to walking transfers: it
+    catches a movement nobody in this project signed. These tests are about
+    the matching, so the stub agrees with the ledger and stays out of the way.
+    """
+    state = verifier.calculate_expected_state(led)
+
+    def rpc(payload):
+        if payload["method"] == "eth_blockNumber":
+            return {"jsonrpc": "2.0", "id": 1, "result": "0x1"}
+        data = payload["params"][0]["data"]
+        if data.startswith("0x18160ddd"):
+            value = state[1]
+        else:
+            value = state[0].get("0x" + data[-40:], 0)
+        return {"jsonrpc": "2.0", "id": 1, "result": "0x%064x" % value}
+
+    return rpc
+
+
 def run(transfers, led=None):
+    led = led or ledger()
     with (patch.object(verifier, "fetch_transfers", return_value=transfers),
-          patch.object(Path, "read_text", return_value=json.dumps(led or ledger()))):
+          patch.object(verifier, "rpc_call", side_effect=balances_for(led)),
+          patch.object(Path, "read_text", return_value=json.dumps(led))):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             code = verifier.main()
@@ -49,37 +87,37 @@ def run(transfers, led=None):
 
 class Matching(unittest.TestCase):
     def test_an_honest_movement_passes(self):
-        self.assertEqual(run([transfer()])[0], 0)
+        self.assertEqual(run([mint_transfer(), transfer()])[0], 0)
 
     def test_the_same_movement_twice_needs_two_entries(self):
-        code, out = run([transfer(), transfer()])
+        code, out = run([mint_transfer(), transfer(), transfer()])
         self.assertEqual(code, 1, "one entry must not discharge two movements")
         self.assertIn("UNACCOUNTED", out)
 
     def test_two_movements_with_two_entries_passes(self):
         led = ledger()
-        led["entries"].append(dict(led["entries"][0]))
-        self.assertEqual(run([transfer(), transfer()], led)[0], 0)
+        led["entries"].append(dict(PAYMENT))
+        self.assertEqual(run([mint_transfer(), transfer(), transfer()], led)[0], 0)
 
     def test_entry_naming_the_wrong_source_wallet_fails(self):
-        code, out = run([transfer(frm=REWARDS)])
+        code, out = run([mint_transfer(), transfer(frm=REWARDS)])
         self.assertEqual(code, 1, "`from` must be part of the movement's identity")
 
     def test_entry_with_no_onchain_counterpart_fails(self):
-        code, out = run([])
+        code, out = run([mint_transfer()])
         self.assertEqual(code, 1)
         self.assertIn("not found on-chain", out)
 
     def test_claimed_twice_observed_once_reports_the_shortfall(self):
         led = ledger()
-        led["entries"].append(dict(led["entries"][0]))
-        code, out = run([transfer()], led)
+        led["entries"].append(dict(PAYMENT))
+        code, out = run([mint_transfer(), transfer()], led)
         self.assertEqual(code, 1)
         self.assertIn("x1", out)
 
     def test_third_party_transfers_are_ignored(self):
-        self.assertEqual(run([transfer(), transfer(frm=OUTSIDE, to=OUTSIDE,
-                                                  tx="0x" + "22" * 32)])[0], 0)
+        self.assertEqual(run([mint_transfer(), transfer(),
+                              transfer(frm=OUTSIDE, to=OUTSIDE, tx="0x" + "22" * 32)])[0], 0)
 
     def test_the_mint_sentinel_resolves_to_the_zero_address(self):
         led = ledger([{"tx": TX, "date": "2026-02-10", "from": "mint",

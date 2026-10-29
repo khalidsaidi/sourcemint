@@ -34,7 +34,10 @@ jobs:
           python3 -B -m unittest discover -s script -p 'test_ledger_schema.py'
       - name: Verify ledger against Base mainnet
         env:
+          # Nonces and balances. mainnet.base.org serves these and refuses
+          # eth_getLogs, so the log reads go elsewhere. Both public, no key.
           BASE_RPC_URL: https://mainnet.base.org
+          BASE_LOGS_RPC_URL: https://base.gateway.tenderly.co
         run: |
           set +e
           python3 script/verify_ledger.py

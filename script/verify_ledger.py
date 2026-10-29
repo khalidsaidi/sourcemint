@@ -35,10 +35,28 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from pathlib import Path
 
+if __package__:
+    from .chain_history import blocks_with_transactions
+    from .decode_transfer_fixture import decode_transfer
+else:
+    from chain_history import blocks_with_transactions
+    from decode_transfer_fixture import decode_transfer
+
 LEDGER_PATH = Path(__file__).resolve().parent.parent / "rewards" / "ledger.json"
 
-# Transfer-history sources, tried in order. Add more here if another free,
-# no-key indexer for Base becomes available; the loop below handles failover.
+# The chain is the source of truth. Transfer history is derived from it with
+# no API key, no account and nobody's permission — see derive_transfers below.
+# The indexers here answer the same question in one request instead of ~190,
+# so they are tried first as a shortcut. Losing them costs seconds, not the
+# ability to verify.
+DEPLOYMENT_BLOCK = 41988939
+
+# No single free Base endpoint serves both halves of the derivation, so there
+# are two. Nonces and balances come from BASE_RPC_URL; mainnet.base.org is
+# fine for those and refuses eth_getLogs entirely. The handful of single-block
+# log reads go to BASE_LOGS_RPC_URL. Both are public and need no key.
+LOGS_RPC_URL = os.environ.get(
+    "BASE_LOGS_RPC_URL", "https://base.gateway.tenderly.co")
 SOURCES = (
     "https://base.blockscout.com/api/v2/tokens/{token}/transfers",
 )
@@ -107,8 +125,20 @@ def _get_page(url: str, params: dict) -> dict:
     raise SourceUnavailable(last or "unknown error")
 
 
-def rpc_call(payload: dict) -> dict:
-    endpoint = os.environ.get("BASE_RPC_URL")
+# Deriving history makes a couple of hundred calls back to back. Free
+# endpoints throttle that, so leave a gap between them; the whole run still
+# finishes in well under a minute.
+RPC_MIN_INTERVAL = float(os.environ.get("BASE_RPC_MIN_INTERVAL", "0.05"))
+_last_call = [0.0]
+
+
+def rpc_call(payload: dict, endpoint: str = None) -> dict:
+    wait = RPC_MIN_INTERVAL - (time.monotonic() - _last_call[0])
+    if wait > 0:
+        time.sleep(wait)
+    _last_call[0] = time.monotonic()
+
+    endpoint = endpoint or os.environ.get("BASE_RPC_URL")
     if not endpoint:
         raise SourceUnavailable("BASE_RPC_URL is not configured")
 
@@ -134,7 +164,62 @@ def rpc_call(payload: dict) -> dict:
             f"RPC transport/JSON failure: {type(e).__name__}"
         ) from e
 
-def fetch_transfers(token: str):
+def derive_transfers(token: str, wallets):
+    """Every SRCMNT movement involving a project wallet, derived from the chain.
+
+    Reading all 11M+ blocks since deployment to find a handful of transactions
+    is O(chain). This is O(our own activity):
+
+      1. A nonce is monotonic, so binary-searching `eth_getTransactionCount`
+         over block height finds every block in which a wallet sent a
+         transaction. Nothing hides there — unlike a balance, a nonce never
+         comes back down, so tokens sent out and returned are still two
+         separate increments.
+      2. Logs are read only for those blocks, plus the deployment block for
+         the mint, which no wallet signed.
+
+    A movement the wallet did not sign — a third party spending an allowance
+    via `transferFrom` — leaves the nonce untouched. That case is the exact
+    complement and is caught by the balance reconciliation in main().
+
+    Needs no API key, no account and no indexer.
+    """
+    def nonce_at(address, block):
+        return int(_rpc_result(
+            rpc_call({"jsonrpc": "2.0", "id": 1,
+                      "method": "eth_getTransactionCount",
+                      "params": [address, hex(block)]}),
+            "eth_getTransactionCount"), 16)
+
+    head = int(_rpc_result(
+        rpc_call({"jsonrpc": "2.0", "id": 1,
+                  "method": "eth_blockNumber", "params": []}),
+        "eth_blockNumber"), 16)
+    if head < DEPLOYMENT_BLOCK:
+        raise SourceUnavailable("chain head precedes the deployment block")
+
+    blocks = {DEPLOYMENT_BLOCK}          # the mint itself
+    for address in sorted(wallets):
+        blocks.update(blocks_with_transactions(
+            address, DEPLOYMENT_BLOCK - 1, head, nonce_at))
+
+    transfers = []
+    for block in sorted(blocks):
+        logs = _rpc_result(
+            rpc_call({"jsonrpc": "2.0", "id": 1, "method": "eth_getLogs",
+                      "params": [{"address": token,
+                                  "fromBlock": hex(block), "toBlock": hex(block),
+                                  "topics": [TRANSFER_TOPIC]}]},
+                     endpoint=LOGS_RPC_URL),
+            "eth_getLogs")
+        for log in logs:
+            if log.get("removed"):
+                continue             # dropped by a reorg; not part of history
+            transfers.append(decode_transfer(log))
+    return transfers
+
+
+def fetch_transfers(token: str, wallets):
     """Return complete transfer history; discard partial data on failure."""
     problems = []
     for template in SOURCES:
@@ -159,153 +244,17 @@ def fetch_transfers(token: str):
                 if nxt is None:
                     break
                 params = nxt
-            if template is not SOURCES[0]:
-                print(f"note: primary source unavailable, used {url.split('/')[2]}")
             return items
         except SourceUnavailable as e:
             problems.append(f"{url.split('/')[2]}: {e}")
+
+    print(f"note: no indexer answered ({'; '.join(problems)});"
+          " deriving the history from the chain")
+    try:
+        return derive_transfers(token, wallets)
+    except SourceUnavailable as e:
+        problems.append(f"chain: {e}")
     raise SourceUnavailable("; ".join(problems))
-
-def verify_rpc_fallback(ledger, token, rpc):
-    for entry in ledger["entries"]:
-            tx_hash = entry["tx"]
-            expected_amount = amount_to_wei(entry["amount"])
-            response = rpc({
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "eth_getTransactionReceipt",
-                "params": [tx_hash],
-            })
-
-            if not isinstance(response, dict):
-                raise SourceUnavailable("RPC response must be an object")
-
-            if (
-                response.get("jsonrpc") != "2.0"
-                or type(response.get("id")) is not int
-                or response.get("id") != 1
-                or "error" in response
-            ):
-                raise SourceUnavailable("Invalid or failed receipt response")
-
-            if "result" not in response:
-                raise SourceUnavailable("RPC result field missing")
-
-            result = response.get("result")
-
-            if result is None:
-                raise SourceUnavailable("Transaction receipt unavailable")
-
-            if not isinstance(result, dict):
-                raise SourceUnavailable("RPC response must be an object")
-
-
-            receipt_tx = result.get("transactionHash")
-
-            if not is_hex_bytes(receipt_tx, 32):
-                raise SourceUnavailable("Invalid receipt transactionHash")
-
-            if receipt_tx.lower() != tx_hash.lower():
-                raise SourceUnavailable("Receipt transactionHash mismatch")
-
-            status = result.get("status")
-
-            if (status == "0x0"):
-                raise AccountingViolation("Transaction failed")
-
-            if(status != "0x1"):
-                raise SourceUnavailable("Invalid or missing receipt status")
-
-            logs = result.get("logs")
-
-            if not isinstance(logs, list):
-                raise SourceUnavailable("Receipt logs must be list")
-
-            matched = False
-
-            for log in logs:
-                if not isinstance(log, dict):
-                    raise SourceUnavailable("Each log must be an object")
-
-                address = log.get("address")
-                if not is_hex_bytes(address, 20):
-                    raise SourceUnavailable("Invalid log address")
-
-                if address.lower() != token.lower():
-                    continue
-
-                topics = log.get("topics")
-                if not isinstance(topics, list):
-                    raise SourceUnavailable("Log topics must be a list")
-
-                if not topics:
-                    continue
-
-                if not is_hex_bytes(topics[0], 32):
-                    raise SourceUnavailable("Invalid event signature topic")
-
-                if topics[0].lower() != TRANSFER_TOPIC.lower():
-                    continue
-
-                if len(topics) != 3:
-                    raise SourceUnavailable("ERC20 Transfer must have 3 topics")
-
-                if not all(is_hex_bytes(topic, 32) for topic in topics[1:]):
-                    raise SourceUnavailable("Invalid Transfer address topics")
-
-                if any(topic[2:26] != "0" * 24 for topic in topics[1:]):
-                    raise SourceUnavailable("Invalid address topic padding")
-
-                data = log.get("data")
-
-                if not is_hex_bytes(data, 32):
-                    raise SourceUnavailable("Transfer data must be 32-byte hex")
-
-                log_tx = log.get("transactionHash")
-
-                if not is_hex_bytes(log_tx, 32):
-                    raise SourceUnavailable("Invalid Transfer transactionHash")
-
-                if log_tx.lower() != tx_hash.lower():
-                    raise SourceUnavailable("Transfer transactionHash mismatch")
-
-                sender_topics = topics[1]
-                receiver_topics = topics[2]
-
-                sender = "0x" + sender_topics[-40:]
-                receiver = "0x" + receiver_topics[-40:]
-
-                if (entry["from"] == "mint"):
-                    expected_sender = ZERO_ADDRESS
-                else:
-                    expected_sender = entry["from"]
-
-                if(sender.lower() != expected_sender.lower()):
-                    continue
-
-                if(receiver.lower() != entry["to"].lower()):
-                    continue
-
-                if(int(data, 16) != expected_amount):
-                    continue
-
-                matched = True
-
-            if (not matched):
-                raise AccountingViolation(
-                    "no matching Transfer log on-chain for ledger entry "
-                    f"{entry['tx']} ({entry['amount']} SRCMNT to {entry['to']}). "
-                    "The entry claims a movement the chain does not show."
-                )
-
-    verify_balances_total_supply(ledger, token, rpc)
-
-    print(
-        "RESULT: OK — receipt and balance checks passed "
-        "(degraded fallback; full transfer history not checked)."
-    )
-
-    return 0
 
 def _srcmnt(wei, signed=False):
     """Whole-token rendering for operator-facing messages. Integer math only."""
@@ -365,6 +314,17 @@ def _rpc_result(response, method):
     if method in ("balanceOf", "totalSupply"):
         if not is_hex_bytes(result, 32):
             raise SourceUnavailable(f"{method}: expected 32-byte hex")
+
+    elif method == "eth_getTransactionCount":
+        if (
+            not isinstance(result, str)
+            or re.fullmatch(r"0x[0-9a-fA-F]+", result) is None
+        ):
+            raise SourceUnavailable(f"{method}: expected a hex quantity")
+
+    elif method == "eth_getLogs":
+        if not isinstance(result, list):
+            raise SourceUnavailable(f"{method}: expected a list of logs")
 
     elif method == "eth_blockNumber":
         if (
@@ -468,20 +428,13 @@ def main() -> int:
     checked = 0
 
     try:
-        transfers = fetch_transfers(token)
-    except SourceUnavailable as primary_error:
-        print(f"note: primary unavailable: {primary_error}")
-
-        try:
-            return verify_rpc_fallback(ledger, token, rpc_call)
-        except SourceUnavailable as rpc_error:
-            print(f"COULD NOT VERIFY: {rpc_error}")
-            return 2
-        except AccountingViolation as rpc_error:
-            print("\nACCOUNTING VIOLATION (degraded fallback):")
-            print(f"  {rpc_error}")
-            print("\nRESULT: FAIL")
-            return 1
+        transfers = fetch_transfers(token, wallets)
+    except SourceUnavailable as e:
+        print("COULD NOT VERIFY: no transfer history could be obtained.")
+        print(f"  tried: {e}")
+        print("  This is an infrastructure outage, not a finding about the ledger.")
+        print("  The next successful run re-checks the full history.")
+        return 2
 
     for t in transfers:
         frm = t["from"]["hash"].lower()
@@ -524,6 +477,26 @@ def main() -> int:
         ok = False
         print("\nLEDGER entries not found on-chain:")
         print("\n".join(missing_onchain))
+
+    # Everything above checks movements we signed. A third party spending an
+    # allowance moves tokens without touching our nonce and without appearing
+    # in a block we looked at — the exact complement. A balance that the
+    # ledger cannot explain is what that looks like.
+    try:
+        verify_balances_total_supply(ledger, token, rpc_call)
+    except AccountingViolation as e:
+        ok = False
+        print("\nBALANCE UNEXPLAINED (a movement we did not sign):")
+        print(f"  {e}")
+    except SourceUnavailable as e:
+        # A violation already found is a finding; an outage must never
+        # downgrade it to "could not verify".
+        if not ok:
+            print(f"\nnote: balances unchecked ({e})")
+        else:
+            print("COULD NOT VERIFY: transfers matched, but balances could "
+                  f"not be read to rule out a movement we did not sign ({e}).")
+            return 2
 
     print("\nRESULT:", "OK — every project-wallet movement is accounted for." if ok else "FAIL")
     return 0 if ok else 1
