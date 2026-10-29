@@ -82,10 +82,18 @@ def validate(ledger):
 
         # A transaction can carry several transfers, so the key is the whole
         # movement, not the hash alone.
-        key = (str(e.get("tx", "")).lower(), str(e.get("to", "")).lower(),
-               str(e.get("amount", "")))
+        # The verifier matches movements as (tx, from, to, amount) multisets,
+        # so genuine repeats are legitimate: one transaction can carry the same
+        # movement twice and then needs two entries. Only flag an exact
+        # duplicate that also repeats the reason, which is almost certainly a
+        # copy-paste rather than a real second movement.
+        key = (str(e.get("tx", "")).lower(), str(e.get("from", "")).lower(),
+               str(e.get("to", "")).lower(), str(e.get("amount", "")),
+               str(e.get("reason", "")))
         if key in seen:
-            problems.append(f"{where} duplicates entries[{seen[key]}]")
+            problems.append(
+                f"{where} is identical to entries[{seen[key]}], reason included; "
+                "if this is a genuine second movement, say so in the reason")
         else:
             seen[key] = i
 

@@ -24,6 +24,7 @@ Run: python3 script/verify_ledger.py
 
 import json
 import sys
+from collections import Counter
 import time
 import re
 import os
@@ -447,14 +448,22 @@ def main() -> int:
     token = ledger["token"]
     wallets = {a.lower() for a in ledger["project_wallets"].values()}
     try:
-        entries = {
-            (e["tx"].lower(), e["to"].lower(), amount_to_wei(e["amount"])): e
-            for e in ledger["entries"]
-        }
+        # A movement is (tx, from, to, amount). `from` is part of the identity:
+        # without it an entry can name the wrong source wallet and still match.
+        # And this is a multiset, not a set — one transaction can carry the same
+        # movement more than once, and each occurrence needs its own entry.
+        entries = Counter()
+        entry_by_key = {}
+        for e in ledger["entries"]:
+            frm = ZERO_ADDRESS if e["from"] == "mint" else e["from"].lower()
+            key = (e["tx"].lower(), frm, e["to"].lower(),
+                   amount_to_wei(e["amount"]))
+            entries[key] += 1
+            entry_by_key.setdefault(key, e)
     except AccountingViolation as exc:
         print(f"Invalid ledger: {exc}")
         return 1
-    seen_keys = set()
+    observed = Counter()
     unaccounted = []
     checked = 0
 
@@ -485,20 +494,26 @@ def main() -> int:
         if not (is_mint or frm in wallets):
             continue  # third-party movement: outside project accounting
         checked += 1
-        key = (tx, to, amount_wei)
-        if key in entries:
-            seen_keys.add(key)
-        else:
+        key = (tx, frm, to, amount_wei)
+        observed[key] += 1
+        if observed[key] > entries[key]:
             unaccounted.append(f"  {tx} {'mint' if is_mint else frm} -> {to} : {amount} SRCMNT")
 
-    missing_onchain = [
-        f"  {e['tx']} -> {e['to']} : {e['amount']} SRCMNT ({e['reason'][:50]}...)"
-        for key, e in entries.items()
-        if key not in seen_keys
-    ]
+    # Every claimed occurrence must be observed, not merely the key seen once.
+    missing_onchain = []
+    for key, claimed in entries.items():
+        shortfall = claimed - observed[key]
+        if shortfall > 0:
+            e = entry_by_key[key]
+            times = "" if shortfall == 1 else f" x{shortfall}"
+            missing_onchain.append(
+                f"  {e['tx']} {e['from']} -> {e['to']} : {e['amount']} SRCMNT"
+                f"{times} ({e['reason'][:50]}...)"
+            )
 
+    matched = sum(min(c, observed[k]) for k, c in entries.items())
     print(f"project-wallet transfers checked on-chain: {checked}")
-    print(f"ledger entries matched: {len(seen_keys)}/{len(entries)}")
+    print(f"ledger entries matched: {matched}/{sum(entries.values())}")
 
     ok = True
     if unaccounted:
