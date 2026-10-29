@@ -31,7 +31,7 @@ def ledger():
                 {"tx": MINT_TX, "date": "2026-02-10", "from": "mint",
                  "to": TREASURY, "amount": "1000", "reason": "genesis"},
                 {"tx": TX, "date": "2026-10-29", "from": TREASURY,
-                 "to": OUTSIDE, "amount": "500", "reason": "a payment"}]}
+                 "to": OUTSIDE, "amount": "500", "reason": "a reward"}]}
 
 
 def transfers():

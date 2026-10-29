@@ -32,14 +32,14 @@ MINT_TX = "0x" + "99" * 32
 # resembling anything the verifier will ever see.
 MINT = {"tx": MINT_TX, "date": "2026-02-10", "from": "mint", "to": TREASURY,
         "amount": "1000", "reason": "genesis mint"}
-PAYMENT = {"tx": TX, "date": "2026-10-28", "from": TREASURY, "to": OUTSIDE,
-           "amount": "500", "reason": "a payment"}
+REWARD = {"tx": TX, "date": "2026-10-28", "from": TREASURY, "to": OUTSIDE,
+           "amount": "500", "reason": "a reward"}
 
 
 def ledger(entries=None):
     return {"token": TOKEN, "chain_id": 8453,
             "project_wallets": {"treasury": TREASURY, "rewards": REWARDS},
-            "entries": entries if entries is not None else [dict(MINT), dict(PAYMENT)]}
+            "entries": entries if entries is not None else [dict(MINT), dict(REWARD)]}
 
 
 def mint_transfer():
@@ -96,7 +96,7 @@ class Matching(unittest.TestCase):
 
     def test_two_movements_with_two_entries_passes(self):
         led = ledger()
-        led["entries"].append(dict(PAYMENT))
+        led["entries"].append(dict(REWARD))
         self.assertEqual(run([mint_transfer(), transfer(), transfer()], led)[0], 0)
 
     def test_entry_naming_the_wrong_source_wallet_fails(self):
@@ -110,7 +110,7 @@ class Matching(unittest.TestCase):
 
     def test_claimed_twice_observed_once_reports_the_shortfall(self):
         led = ledger()
-        led["entries"].append(dict(PAYMENT))
+        led["entries"].append(dict(REWARD))
         code, out = run([mint_transfer(), transfer()], led)
         self.assertEqual(code, 1)
         self.assertIn("x1", out)

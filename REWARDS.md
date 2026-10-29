@@ -34,7 +34,7 @@ Merged contributions to this repository, at the maintainer's discretion:
    anything non-trivial.
 2. Submit a PR. Include a Base address in the PR description if you want a
    reward. Never share private keys — an address only.
-3. If the PR is merged and the maintainer assigns a reward, payment is sent
+3. If the PR is merged and the maintainer assigns a reward, it is sent
    from the rewards wallet
    (`0x1af3cBcE941a2AC9D987E853b5385b05c405E16F`), and the transaction is
    added to the ledger in the same or a follow-up commit, with the PR as the
