@@ -58,7 +58,7 @@ class SourceSelection(unittest.TestCase):
         with (patch.object(verifier, "_get_page",
                            side_effect=verifier.SourceUnavailable("403")),
               patch.object(verifier, "derive_transfers",
-                           return_value=["derived"]) as derive):
+                           return_value=(["derived"], set())) as derive):
             self.assertEqual(verifier.fetch_transfers(TOKEN, WALLETS), ["derived"])
         derive.assert_called_once()
 
@@ -76,7 +76,7 @@ class Derivation(unittest.TestCase):
         head = head or verifier.DEPLOYMENT_BLOCK + 1_000_000
         with patch.object(verifier, "rpc_call",
                           side_effect=rpc_responses(nonces, logs, head)):
-            return verifier.derive_transfers(TOKEN, WALLETS)
+            return verifier.derive_transfers(TOKEN, WALLETS)[0]
 
     def test_finds_a_movement_in_a_block_the_wallet_transacted_in(self):
         out = self.derive({verifier.DEPLOYMENT_BLOCK + 500_000: 1},

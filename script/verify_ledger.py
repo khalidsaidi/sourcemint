@@ -51,6 +51,12 @@ LEDGER_PATH = Path(__file__).resolve().parent.parent / "rewards" / "ledger.json"
 # ability to verify.
 DEPLOYMENT_BLOCK = 41988939
 
+# Spenders a project wallet has ever granted an allowance to. A live allowance
+# means tokens can leave via transferFrom: no nonce increment, and in a block
+# the derivation never reads. The verifier must not claim completeness while
+# one is outstanding, so it checks each and says so plainly.
+LIVE_SPENDERS = []
+
 # No single free Base endpoint serves both halves of the derivation, so there
 # are two. Nonces and balances come from BASE_RPC_URL; mainnet.base.org is
 # fine for those and refuses eth_getLogs entirely. The handful of single-block
@@ -63,6 +69,12 @@ SOURCES = (
 DECIMALS = 10**18
 ATTEMPTS_PER_SOURCE = 3   # 3 attempts; 2s + 4s backoff before RPC fallback
 ZERO_ADDRESS = "0x" + "00" * 20
+# Approval(address indexed owner, address indexed spender, uint256 value)
+ALLOWANCE_SELECTOR = "0xdd62ed3e"
+APPROVAL_TOPIC = (
+    "0x8c5be1e5ebec7d5bd14f71427d1e84f3"
+    "dd0314c0f7b2291e5b200ac8c7c3b925"
+)
 TRANSFER_TOPIC = (
     "0xddf252ad1be2c89b69c2b068fc378daa"
     "952ba7f163c4a11628f55a4df523b3ef"
@@ -204,19 +216,30 @@ def derive_transfers(token: str, wallets):
             address, DEPLOYMENT_BLOCK - 1, head, nonce_at))
 
     transfers = []
+    spenders = set()
     for block in sorted(blocks):
+        # One unfiltered read per block gets Transfers and Approvals together;
+        # filtering by topic would cost a second request for no benefit.
         logs = _rpc_result(
             rpc_call({"jsonrpc": "2.0", "id": 1, "method": "eth_getLogs",
                       "params": [{"address": token,
-                                  "fromBlock": hex(block), "toBlock": hex(block),
-                                  "topics": [TRANSFER_TOPIC]}]},
+                                  "fromBlock": hex(block),
+                                  "toBlock": hex(block)}]},
                      endpoint=LOGS_RPC_URL),
             "eth_getLogs")
         for log in logs:
             if log.get("removed"):
                 continue             # dropped by a reorg; not part of history
-            transfers.append(decode_transfer(log))
-    return transfers
+            topics = log.get("topics") or []
+            if not topics:
+                continue
+            if topics[0].lower() == TRANSFER_TOPIC.lower():
+                transfers.append(decode_transfer(log))
+            elif topics[0].lower() == APPROVAL_TOPIC.lower() and len(topics) == 3:
+                owner = "0x" + topics[1][-40:]
+                if owner.lower() in {w.lower() for w in wallets}:
+                    spenders.add("0x" + topics[2][-40:])
+    return transfers, spenders
 
 
 def fetch_transfers(token: str, wallets):
@@ -251,7 +274,9 @@ def fetch_transfers(token: str, wallets):
     print(f"note: no indexer answered ({'; '.join(problems)});"
           " deriving the history from the chain")
     try:
-        return derive_transfers(token, wallets)
+        transfers, spenders = derive_transfers(token, wallets)
+        LIVE_SPENDERS.extend(spenders)
+        return transfers
     except SourceUnavailable as e:
         problems.append(f"chain: {e}")
     raise SourceUnavailable("; ".join(problems))
@@ -311,7 +336,7 @@ def _rpc_result(response, method):
 
     result = response["result"]
 
-    if method in ("balanceOf", "totalSupply"):
+    if method in ("balanceOf", "totalSupply", "allowance"):
         if not is_hex_bytes(result, 32):
             raise SourceUnavailable(f"{method}: expected 32-byte hex")
 
@@ -497,6 +522,36 @@ def main() -> int:
             print("COULD NOT VERIFY: transfers matched, but balances could "
                   f"not be read to rule out a movement we did not sign ({e}).")
             return 2
+
+    # An outstanding allowance lets tokens leave without our wallet signing,
+    # in a block this derivation never reads. Claiming completeness while one
+    # is live would be claiming more than was checked.
+    outstanding = []
+    for spender in sorted(set(LIVE_SPENDERS)):
+        for name, wallet in ledger["project_wallets"].items():
+            try:
+                raw = _rpc_result(rpc_call({
+                    "jsonrpc": "2.0", "id": 1, "method": "eth_call",
+                    "params": [{"to": token,
+                                "data": ALLOWANCE_SELECTOR
+                                        + wallet[2:].lower().zfill(64)
+                                        + spender[2:].lower().zfill(64)},
+                               "latest"]}), "allowance")
+            except SourceUnavailable as e:
+                print(f"\nCOULD NOT VERIFY: allowance for {spender} unreadable ({e}).")
+                return 2
+            if int(raw, 16):
+                outstanding.append((name, spender, int(raw, 16)))
+
+    if outstanding:
+        ok = False
+        print("\nOUTSTANDING ALLOWANCES (tokens can leave without us signing):")
+        for name, spender, amount in outstanding:
+            shown = "unlimited" if amount > 2**255 else f"{amount // DECIMALS:,}"
+            print(f"  {name} -> {spender} : {shown} SRCMNT")
+        print("  While these stand, transfers made by the spender do not appear")
+        print("  in any block this check reads. Revoke them or the history is")
+        print("  not provably complete.")
 
     print("\nRESULT:", "OK — every project-wallet movement is accounted for." if ok else "FAIL")
     return 0 if ok else 1

@@ -23,18 +23,29 @@ Measured against Base mainnet: **about 180 requests, under twenty seconds**,
 for the token's entire history. That cost grows with our activity, not with
 the chain's.
 
-## What a nonce cannot see, and what catches it
+## What a nonce cannot see
 
 A third party spending an allowance via `transferFrom` moves tokens without
-our wallet signing anything, so no nonce increments and the movement sits in a
-block we never look at.
+our wallet signing anything. No nonce increments, and the transfer sits in a
+block this derivation never reads.
 
-That case is the exact complement: it changes a balance without touching a
-nonce. After the transfer comparison, `balanceOf` and `totalSupply` are
-reconciled against what the ledger implies. A balance the ledger cannot
-explain is what an unsigned movement looks like.
+Two things address it.
 
-Together the two leave nothing uncovered.
+`balanceOf` and `totalSupply` are reconciled against what the ledger implies,
+so an unexplained balance reveals a movement nobody here signed. That catches
+the ordinary case but not a round trip, where tokens leave and the same amount
+returns and the balance is unchanged.
+
+So the verifier also refuses to claim completeness while any allowance is
+outstanding. Granting an allowance is itself a transaction a project wallet
+signed, so it appears in a block already being read: the same single request
+per block returns `Approval` logs alongside `Transfer` logs, at no extra cost.
+Every spender ever approved is then checked with `allowance`, and a non-zero
+result fails the run with the spender named.
+
+That is deliberately strict. A live allowance does not mean anything has gone
+wrong — it means this check cannot prove that nothing has, and saying so is
+the point.
 
 ## Indexers
 
