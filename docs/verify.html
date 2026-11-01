@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verify the SourceMint ledger — in your own browser</title>
+<meta name="description" content="Check SourceMint's public ledger against the Base blockchain yourself. No account, no API key, nothing to install — your browser reads the chain directly.">
+<link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+<link rel="canonical" href="https://srcmnt.xyz/verify.html">
+<meta property="og:title" content="Verify the SourceMint ledger">
+<meta property="og:description" content="Don't take our word for it. Your browser checks the ledger against Base directly.">
+<meta property="og:image" content="https://srcmnt.xyz/assets/logo-256.png">
+<meta property="og:url" content="https://srcmnt.xyz/verify.html">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Source+Sans+3:wght@400;600&family=Source+Code+Pro:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F5FAF7;
+  --ink:#101D2C;
+  --mint:#147258;
+  --mint-bright:#178A66;
+  --blue:#1D4ED8;
+  --line:#D8E5DD;
+  --dim:#566873;
+  --card:#FFFFFF;
+  --warn:#8A5A00;
+  --bad:#A32020;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:"Source Sans 3",system-ui,-apple-system,sans-serif;
+  font-size:1.0625rem;line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--mint);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
+a:hover{color:var(--ink)}
+a:focus-visible,button:focus-visible{outline:2px solid var(--blue);outline-offset:3px;border-radius:2px}
+code,.mono{font-family:"Source Code Pro",ui-monospace,monospace}
+.wrap{max-width:960px;margin:0 auto;padding:0 24px}
+
+header.site{border-bottom:1px solid var(--line);background:var(--paper)}
+.site-row{display:flex;align-items:center;justify-content:space-between;padding:18px 0}
+.brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:var(--ink)}
+.brand img{width:32px;height:32px;border-radius:8px}
+.brand b{font-family:"Source Serif 4",serif;font-weight:700;font-size:1.15rem;letter-spacing:.01em}
+nav.top a{margin-left:22px;font-size:.95rem;color:var(--dim);text-decoration:none}
+nav.top a:hover{color:var(--mint)}
+@media(max-width:640px){nav.top{display:none}}
+
+section{padding:58px 0;border-bottom:1px solid var(--line)}
+.sec-label{font-family:"Source Code Pro",monospace;font-size:.75rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--mint);margin-bottom:10px}
+section h1{font-family:"Source Serif 4",serif;font-weight:700;font-size:clamp(2rem,5vw,2.8rem);margin-bottom:16px;letter-spacing:-.015em;line-height:1.1}
+section h2{font-family:"Source Serif 4",serif;font-weight:700;font-size:1.4rem;margin:34px 0 14px;letter-spacing:-.01em}
+section p{max-width:44em;margin-bottom:14px}
+
+/* verdict banner */
+.verdict{border:1px solid var(--line);background:var(--card);padding:22px 24px;margin:26px 0 8px;display:flex;gap:16px;align-items:flex-start}
+.verdict .dot{width:12px;height:12px;border-radius:50%;flex:0 0 12px;margin-top:8px;background:var(--dim)}
+.verdict.ok .dot{background:var(--mint-bright)}
+.verdict.bad .dot{background:var(--bad)}
+.verdict.warn .dot{background:var(--warn)}
+.verdict.busy .dot{background:var(--blue);animation:pulse 1.1s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.verdict.busy .dot{animation:none}}
+.verdict strong{font-family:"Source Serif 4",serif;font-size:1.15rem;display:block;margin-bottom:3px}
+.verdict.ok strong{color:var(--mint)}
+.verdict.bad strong{color:var(--bad)}
+.verdict.warn strong{color:var(--warn)}
+.verdict span{color:var(--dim);font-size:.95rem}
+
+table.led{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);margin:8px 0 18px;font-size:.95rem}
+table.led th,table.led td{padding:12px 16px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+table.led th{font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);font-weight:600}
+table.led td.mono{font-size:.8rem;word-break:break-all}
+table.led td.amt{text-align:right;white-space:nowrap;font-family:"Source Code Pro",monospace}
+table.led tr:last-child td{border-bottom:none}
+.tick{color:var(--mint-bright);font-weight:600}
+.cross{color:var(--bad);font-weight:600}
+.pend{color:var(--dim)}
+.reason{color:var(--dim);font-size:.88rem;max-width:30em}
+
+button.deep{
+  font:inherit;font-weight:600;font-size:.95rem;cursor:pointer;
+  background:var(--mint);color:#fff;border:1px solid var(--mint);
+  padding:11px 20px;border-radius:3px;
+}
+button.deep:hover{background:var(--mint-bright);border-color:var(--mint-bright)}
+button.deep[disabled]{background:var(--dim);border-color:var(--dim);cursor:default}
+.bar{height:4px;background:var(--line);margin-top:14px;display:none}
+.bar i{display:block;height:100%;width:0;background:var(--mint-bright);transition:width .25s linear}
+.calls{font-family:"Source Code Pro",monospace;font-size:.8rem;color:var(--dim);margin-top:8px}
+
+footer{padding:44px 0 60px;color:var(--dim);font-size:.9rem}
+footer .foot-note{max-width:46em;margin-bottom:16px}
+footer .mono{font-size:.78rem}
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap site-row">
+    <a class="brand" href="/"><img src="assets/logo.svg" alt="SourceMint logo"><b>SourceMint</b></a>
+    <nav class="top" aria-label="Sections">
+      <a href="whitepaper.html">Overview</a>
+      <a href="/#contracts">Contracts</a>
+      <a href="/#treasury">Treasury</a>
+      <a href="writing/ledger-ci.html">Writing</a>
+      <a href="/#contact">Contact</a>
+    </nav>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <p class="sec-label">Verify</p>
+    <h1>Don't take our word for it</h1>
+    <p>SourceMint claims that every SRCMNT token leaving a project wallet is recorded in a public ledger with a stated reason. This page checks that claim <strong>in your browser</strong>, against the Base blockchain, right now.</p>
+    <p>Nothing here is served from our machines. Your browser fetches <a href="https://github.com/khalidsaidi/sourcemint/blob/main/rewards/ledger.json">the ledger</a> from the repository and reads the chain through a public Base RPC endpoint. No account, no API key, nothing to install — and nothing we could quietly change without the chain disagreeing.</p>
+
+    <div class="verdict busy" id="verdict" role="status" aria-live="polite">
+      <span class="dot" aria-hidden="true"></span>
+      <div><strong id="vtitle">Checking…</strong><span id="vdetail">Reading the ledger.</span></div>
+    </div>
+
+    <table class="led" id="entries">
+      <thead><tr><th>Date</th><th>Movement</th><th class="amt">Amount</th><th>On-chain</th></tr></thead>
+      <tbody id="rows"><tr><td colspan="4" class="pend">Loading the ledger…</td></tr></tbody>
+    </table>
+
+    <h2>What this checked</h2>
+    <p>Each ledger entry names a transaction. For every one, your browser fetched the transaction receipt from Base and confirmed it succeeded and carries a matching SRCMNT transfer of exactly that amount to exactly that address. It then read the live balance of each project wallet and the total supply, and confirmed they are what the ledger implies — to the last unit, in integer arithmetic.</p>
+    <p>That proves every claim in the ledger is real. It does not, on its own, prove there is nothing <em>missing</em> from it.</p>
+
+    <h2>Prove nothing is missing</h2>
+    <p>For that, the full history has to be derived from the chain rather than read from the ledger. Your browser can do that too. An account's nonce only ever increases, so searching it over block height finds every block in which a project wallet sent a transaction — nothing can hide there. The logs in those blocks are then read directly.</p>
+    <p>It takes a few hundred requests and under a minute. Same method the <a href="https://github.com/khalidsaidi/sourcemint/actions/workflows/ledger.yml">weekly check</a> runs.</p>
+    <p>
+      <button class="deep" id="deep">Derive the full history</button>
+    </p>
+    <div class="bar" id="bar"><i id="barfill"></i></div>
+    <p class="calls" id="calls"></p>
+    <table class="led" id="derived" style="display:none">
+      <thead><tr><th>Block</th><th>Movement</th><th class="amt">Amount</th><th>In the ledger</th></tr></thead>
+      <tbody id="drows"></tbody>
+    </table>
+
+    <h2>Doing it yourself instead</h2>
+    <p>This page is a convenience, and you have no reason to trust a page we wrote. The same check runs from a clone of the repository, in Python, with no dependencies:</p>
+    <p><code style="display:block;background:var(--card);border:1px solid var(--line);padding:12px 16px;font-size:.85rem">BASE_RPC_URL=https://mainnet.base.org python3 script/verify_ledger.py</code></p>
+    <p>How it works is written up in <a href="writing/ledger-ci.html">Make the build fail when the treasury moves</a>, and the method is documented in <a href="https://github.com/khalidsaidi/sourcemint/blob/main/docs/verification.md">verification.md</a>.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p class="foot-note">SourceMint is an early-stage open-source project for experimentation, developer tooling, and contributor-reward prototypes. Nothing on this page is financial advice, and SRCMNT is not offered as an investment.</p>
+    <p class="mono">SourceMint · SRCMNT · Base (8453) · 0x914F6b6a0DaD39A3CB932dcf4D1af885C7c08EeB</p>
+  </div>
+</footer>
+
+<script>
+"use strict";
+// Everything below runs in the visitor's browser against public endpoints.
+// No key, no account, no server of ours involved.
+
+const LEDGER_URL = "https://raw.githubusercontent.com/khalidsaidi/sourcemint/main/rewards/ledger.json";
+const RPC        = "https://mainnet.base.org";            // nonces, balances, receipts
+const LOGS_RPC   = "https://base.gateway.tenderly.co";    // mainnet.base.org refuses eth_getLogs
+const DEPLOYMENT_BLOCK = 41988939;
+const ZERO = "0x" + "0".repeat(40);
+const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+const WEI = 10n ** 18n;
+
+let calls = 0;
+const bump = () => { calls++; const el = document.getElementById("calls");
+  if (el && el.textContent) el.textContent = el.textContent.replace(/\d+ requests/, calls + " requests"); };
+
+async function rpc(method, params, endpoint = RPC) {
+  bump();
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
+  });
+  if (!res.ok) throw new Error(method + ": HTTP " + res.status);
+  const body = await res.json();
+  if (body.error) throw new Error(method + ": " + (body.error.message || "RPC error"));
+  return body.result;
+}
+
+const short  = a => a.slice(0, 6) + "…" + a.slice(-4);
+const tokens = wei => {           // integer only; never parseFloat an amount
+  const whole = wei / WEI, frac = wei % WEI;
+  const s = whole.toLocaleString("en-US");
+  return frac === 0n ? s : s + "." + frac.toString().padStart(18, "0").replace(/0+$/, "");
+};
+const amountToWei = s => {
+  const [w, f = ""] = String(s).split(".");
+  return BigInt(w) * WEI + BigInt((f + "0".repeat(18)).slice(0, 18));
+};
+
+function verdict(state, title, detail) {
+  const el = document.getElementById("verdict");
+  el.className = "verdict " + state;
+  document.getElementById("vtitle").textContent = title;
+  document.getElementById("vdetail").textContent = detail;
+}
+
+function walletName(ledger, addr) {
+  const a = addr.toLowerCase();
+  for (const [name, w] of Object.entries(ledger.project_wallets))
+    if (w.toLowerCase() === a) return name;
+  return null;
+}
+
+// ---- what the ledger implies each wallet should hold -----------------------
+function expectedState(ledger) {
+  const bal = {}, wallets = Object.values(ledger.project_wallets).map(w => w.toLowerCase());
+  for (const w of wallets) bal[w] = 0n;
+  let supply = 0n;
+  for (const e of ledger.entries) {
+    const amt = amountToWei(e.amount);
+    const from = e.from === "mint" ? ZERO : e.from.toLowerCase();
+    const to = e.to.toLowerCase();
+    if (from === ZERO) supply += amt; else if (from in bal) bal[from] -= amt;
+    if (to in bal) bal[to] += amt;
+  }
+  return { bal, supply };
+}
+
+// ---- tier one: is every claim in the ledger real? --------------------------
+async function checkEntries(ledger) {
+  const rows = document.getElementById("rows");
+  rows.innerHTML = "";
+  const token = ledger.token.toLowerCase();
+  let allGood = true;
+
+  for (const e of ledger.entries) {
+    const tr = document.createElement("tr");
+    const from = e.from === "mint" ? "mint" : (walletName(ledger, e.from) || short(e.from));
+    const to = walletName(ledger, e.to) || short(e.to);
+    tr.innerHTML =
+      `<td class="mono">${e.date}</td>` +
+      `<td>${from} → ${to}<div class="reason">${e.reason.replace(/<[^>]*>/g, "").slice(0, 110)}…</div></td>` +
+      `<td class="amt">${tokens(amountToWei(e.amount))}</td>` +
+      `<td class="pend">checking…</td>`;
+    rows.appendChild(tr);
+    const cell = tr.lastElementChild;
+
+    try {
+      const r = await rpc("eth_getTransactionReceipt", [e.tx]);
+      if (!r) throw new Error("no such transaction");
+      if (r.status !== "0x1") throw new Error("transaction failed on-chain");
+      const want = amountToWei(e.amount);
+      const match = (r.logs || []).some(l =>
+        l.address.toLowerCase() === token &&
+        l.topics[0].toLowerCase() === TRANSFER_TOPIC &&
+        l.topics.length === 3 &&
+        ("0x" + l.topics[2].slice(26)).toLowerCase() === e.to.toLowerCase() &&
+        BigInt(l.data) === want);
+      if (!match) throw new Error("no matching transfer in that transaction");
+      cell.className = "tick";
+      cell.innerHTML = `✓ <a href="https://basescan.org/tx/${e.tx}">block ${parseInt(r.blockNumber, 16).toLocaleString()}</a>`;
+    } catch (err) {
+      allGood = false;
+      cell.className = "cross";
+      cell.textContent = "✗ " + err.message;
+    }
+  }
+  return allGood;
+}
+
+// ---- and do the balances agree with it? ------------------------------------
+async function checkBalances(ledger) {
+  const { bal, supply } = expectedState(ledger);
+  const token = ledger.token;
+  const problems = [];
+
+  for (const [name, addr] of Object.entries(ledger.project_wallets)) {
+    const data = "0x70a08231" + addr.slice(2).toLowerCase().padStart(64, "0");
+    const live = BigInt(await rpc("eth_call", [{ to: token, data }, "latest"]));
+    const want = bal[addr.toLowerCase()];
+    if (live !== want)
+      problems.push(`${name} holds ${tokens(live)} SRCMNT; the ledger accounts for ${tokens(want)}`);
+  }
+  const live = BigInt(await rpc("eth_call", [{ to: token, data: "0x18160ddd" }, "latest"]));
+  if (live !== supply)
+    problems.push(`total supply is ${tokens(live)} SRCMNT; the ledger accounts for ${tokens(supply)}`);
+  return problems;
+}
+
+// ---- tier two: derive the whole history, so nothing can be missing ---------
+async function blocksWithTransactions(addr, low, high, onStep) {
+  const nonceAt = async b => parseInt(await rpc("eth_getTransactionCount", [addr, "0x" + b.toString(16)]), 16);
+  const found = [];
+  async function walk(lo, hi, nLo, nHi) {
+    if (nHi === nLo) return;
+    if (hi - lo <= 1) { for (let i = 0; i < nHi - nLo; i++) found.push(hi); onStep(); return; }
+    const mid = Math.floor((lo + hi) / 2), nMid = await nonceAt(mid);
+    await walk(lo, mid, nLo, nMid);
+    await walk(mid, hi, nMid, nHi);
+  }
+  await walk(low, high, await nonceAt(low), await nonceAt(high));
+  return found;
+}
+
+async function deriveHistory(ledger, progress) {
+  const head = parseInt(await rpc("eth_blockNumber", []), 16);
+  const wallets = Object.values(ledger.project_wallets);
+  const expected = wallets.reduce((n, _) => n, 0);
+
+  const blocks = new Set([DEPLOYMENT_BLOCK]);     // the mint, which no wallet signed
+  let done = 0;
+  const totals = [];
+  for (const w of wallets)
+    totals.push(parseInt(await rpc("eth_getTransactionCount", [w, "0x" + head.toString(16)]), 16));
+  const totalTx = totals.reduce((a, b) => a + b, 0);
+
+  for (const w of wallets) {
+    const bs = await blocksWithTransactions(w, DEPLOYMENT_BLOCK - 1, head,
+      () => progress(++done / Math.max(totalTx, 1) * 0.85));
+    bs.forEach(b => blocks.add(b));
+  }
+
+  const token = ledger.token.toLowerCase();
+  const moves = [];
+  const sorted = [...blocks].sort((a, b) => a - b);
+  let read = 0;
+  for (const b of sorted) {
+    const logs = await rpc("eth_getLogs",
+      [{ address: token, fromBlock: "0x" + b.toString(16), toBlock: "0x" + b.toString(16) }], LOGS_RPC);
+    for (const l of logs) {
+      if (l.removed) continue;                       // dropped by a reorg
+      if (!l.topics.length || l.topics[0].toLowerCase() !== TRANSFER_TOPIC || l.topics.length !== 3) continue;
+      const from = "0x" + l.topics[1].slice(26), to = "0x" + l.topics[2].slice(26);
+      const ours = from.toLowerCase() === ZERO || walletName(ledger, from);
+      if (ours) moves.push({ block: b, from, to, wei: BigInt(l.data), tx: l.transactionHash });
+    }
+    progress(0.85 + (++read / sorted.length) * 0.15);
+  }
+  return moves;
+}
+
+// ---- wiring ----------------------------------------------------------------
+(async function () {
+  let ledger;
+  try {
+    const res = await fetch(LEDGER_URL, { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    ledger = await res.json();
+  } catch (err) {
+    verdict("warn", "Couldn't read the ledger",
+      "Fetching it from GitHub failed (" + err.message + "). That says nothing about the accounting — try again, or run the check from a clone.");
+    document.getElementById("rows").innerHTML =
+      '<tr><td colspan="4" class="pend">Unavailable.</td></tr>';
+    document.getElementById("deep").disabled = true;
+    return;
+  }
+
+  verdict("busy", "Checking…", "Confirming each ledger entry against Base.");
+  let entriesOk, balanceProblems;
+  try {
+    entriesOk = await checkEntries(ledger);
+    balanceProblems = await checkBalances(ledger);
+  } catch (err) {
+    // An unreachable endpoint is an outage, never a finding about the ledger.
+    verdict("warn", "Couldn't finish the check",
+      err.message + " — that's a network or provider problem, not an accounting one.");
+    return;
+  }
+
+  if (entriesOk && balanceProblems.length === 0) {
+    verdict("ok", "Every entry checks out",
+      ledger.entries.length + " movements, each confirmed on-chain, and the balances agree to the last unit. " + calls + " requests from your browser.");
+  } else if (!entriesOk) {
+    verdict("bad", "A ledger entry does not match the chain",
+      "See the table — this is exactly the failure this project exists to make visible.");
+  } else {
+    verdict("bad", "Balances don't match the ledger", balanceProblems.join("; ") + ".");
+  }
+})();
+
+document.getElementById("deep").addEventListener("click", async function () {
+  const btn = this, bar = document.getElementById("bar"), fill = document.getElementById("barfill");
+  const callsEl = document.getElementById("calls"), table = document.getElementById("derived");
+  const drows = document.getElementById("drows");
+  btn.disabled = true; btn.textContent = "Deriving…";
+  bar.style.display = "block";
+  callsEl.textContent = "Searching block height by nonce — " + calls + " requests so far.";
+
+  let ledger;
+  try {
+    ledger = await (await fetch(LEDGER_URL, { cache: "no-store" })).json();
+    const moves = await deriveHistory(ledger, p => { fill.style.width = Math.min(p * 100, 100) + "%"; });
+
+    // every movement the chain shows, against every movement the ledger claims
+    const claimed = new Map();
+    for (const e of ledger.entries) {
+      const from = e.from === "mint" ? ZERO : e.from.toLowerCase();
+      const k = [e.tx.toLowerCase(), from, e.to.toLowerCase(), amountToWei(e.amount)].join("|");
+      claimed.set(k, (claimed.get(k) || 0) + 1);
+    }
+
+    drows.innerHTML = "";
+    let unaccounted = 0;
+    const seen = new Map();
+    for (const m of moves.sort((a, b) => a.block - b.block)) {
+      const k = [m.tx.toLowerCase(), m.from.toLowerCase(), m.to.toLowerCase(), m.wei].join("|");
+      seen.set(k, (seen.get(k) || 0) + 1);
+      const ok = seen.get(k) <= (claimed.get(k) || 0);
+      if (!ok) unaccounted++;
+      const from = m.from.toLowerCase() === ZERO ? "mint" : (walletName(ledger, m.from) || short(m.from));
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        `<td class="mono"><a href="https://basescan.org/tx/${m.tx}">${m.block.toLocaleString()}</a></td>` +
+        `<td>${from} → ${walletName(ledger, m.to) || short(m.to)}</td>` +
+        `<td class="amt">${tokens(m.wei)}</td>` +
+        (ok ? `<td class="tick">✓ ledgered</td>` : `<td class="cross">✗ not in the ledger</td>`);
+      drows.appendChild(tr);
+    }
+    table.style.display = "";
+    fill.style.width = "100%";
+
+    if (unaccounted === 0) {
+      verdict("ok", "Nothing is missing either",
+        moves.length + " project-wallet movements exist on Base since deployment, and every one is in the ledger. Derived in your browser from " + calls + " requests, with no indexer.");
+      callsEl.textContent = calls + " requests — full history derived from the chain.";
+    } else {
+      verdict("bad", unaccounted + " movement(s) are not in the ledger",
+        "The chain shows project funds moving with no recorded reason.");
+      callsEl.textContent = calls + " requests.";
+    }
+  } catch (err) {
+    verdict("warn", "Couldn't finish deriving the history",
+      err.message + " — a provider limit or network problem, not an accounting finding.");
+    callsEl.textContent = calls + " requests before it stopped.";
+  } finally {
+    btn.textContent = "Derive the full history";
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
