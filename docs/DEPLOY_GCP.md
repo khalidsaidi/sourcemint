@@ -2,6 +2,18 @@
 
 ## Website hosting
 
+> **Pushing to `main` does not publish the site.** Firebase Hosting serves
+> srcmnt.xyz and is deployed by hand. A green CI run says the repository is
+> correct, not that the site is. `make site-status` compares the two;
+> `make deploy` publishes and then re-checks.
+>
+> This went wrong once: the supply figure was corrected in the repository on
+> 2026-10-28 and the live site kept showing the old number until 2026-10-31,
+> because the commit was mistaken for a deployment. GitHub Pages was also
+> still enabled and still reporting successful builds for the same domain,
+> which made the mistake easy; it has since been turned off, so Firebase is
+> the only path.
+
 The static website in `docs/` is deployed to Firebase Hosting in project
 `sourcemint-prod-260210-28679`:
 
