@@ -505,10 +505,12 @@ def main() -> int:
     # allowance moves tokens without touching our nonce and without appearing
     # in a block we looked at — the exact complement. A balance that the
     # ledger cannot explain is what that looks like.
+    balance_violation = False
     try:
         verify_balances_total_supply(ledger, token, rpc_call)
     except AccountingViolation as e:
         ok = False
+        balance_violation = True
         print("\nBALANCE UNEXPLAINED (a movement we did not sign):")
         print(f"  {e}")
     except SourceUnavailable as e:
@@ -536,6 +538,11 @@ def main() -> int:
                                         + spender[2:].lower().zfill(64)},
                                "latest"]}), "allowance")
             except SourceUnavailable as e:
+                # A missing sampled entry is not an observed violation, but
+                # an actual transfer or balance finding survives an outage.
+                if unaccounted or balance_violation:
+                    print(f"\nnote: allowance for {spender} unchecked ({e}).")
+                    return 1
                 print(f"\nCOULD NOT VERIFY: allowance for {spender} unreadable ({e}).")
                 return 2
             if int(raw, 16):
