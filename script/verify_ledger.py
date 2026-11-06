@@ -10,14 +10,15 @@ Exit codes:
   0  verified: every project-wallet movement is accounted for
   1  ACCOUNTING VIOLATION: an unaccounted movement, or a ledger entry the
      chain does not show
-  2  COULD NOT VERIFY: no data source was reachable (an infrastructure
-     outage, not a finding about the ledger)
+  2  COULD NOT VERIFY: coverage, canonical identity or a required read
+     could not be established within the configured budgets
 
-The 1/2 split matters. The public indexers this reads are intermittently
-unavailable, and an outage must never be reported as an accounting
-violation. Deferring is safe: each run re-checks the token's entire
-transfer history rather than a delta, so nothing can slip through a missed
-run - the next successful run still sees it.
+A run scans this token's Transfer logs continuously from DEPLOYMENT_BLOCK
+through a fixed head. Success trusts complete RPC responses; it is not an
+independent receipt proof. A later failed page preserves canonical observations,
+while missing coverage cannot prove a ledger entry false. State reads use the
+same canonical block hash. Budgets can make a run inconclusive; no nonce-based
+fallback is used.
 
 Run: python3 script/verify_ledger.py
 """
@@ -25,6 +26,9 @@ Run: python3 script/verify_ledger.py
 import json
 import sys
 from collections import Counter
+from contextvars import ContextVar
+from dataclasses import dataclass
+import math
 import time
 import re
 import os
@@ -35,31 +39,15 @@ from urllib.error import HTTPError, URLError
 from pathlib import Path
 
 if __package__:
-    from .chain_history import blocks_with_transactions
     from .decode_transfer_fixture import decode_transfer
 else:
-    from chain_history import blocks_with_transactions
     from decode_transfer_fixture import decode_transfer
 
 LEDGER_PATH = Path(__file__).resolve().parent.parent / "rewards" / "ledger.json"
 
-# The chain is the source of truth. Transfer history is derived from it with
-# no API key, no account and nobody's permission — see derive_transfers below.
-# The indexers here answer the same question in one request instead of ~190,
-# so they are tried first as a shortcut. Losing them costs seconds, not the
-# ability to verify.
+# Scan the configured token from its deployment through one fixed head.
+# These endpoints must serve the ledger's chain; both are checked before use.
 DEPLOYMENT_BLOCK = 41988939
-
-# Spenders a project wallet has ever granted an allowance to. A live allowance
-# means tokens can leave via transferFrom: no nonce increment, and in a block
-# the derivation never reads. The verifier must not claim completeness while
-# one is outstanding, so it checks each and says so plainly.
-LIVE_SPENDERS = []
-
-# No single free Base endpoint serves both halves of the derivation, so there
-# are two. Nonces and balances come from BASE_RPC_URL; mainnet.base.org is
-# fine for those and refuses eth_getLogs entirely. The handful of single-block
-# log reads go to BASE_LOGS_RPC_URL. Both are public and need no key.
 LOGS_RPC_URL = os.environ.get(
     "BASE_LOGS_RPC_URL", "https://base.gateway.tenderly.co")
 DECIMALS = 10**18
@@ -112,14 +100,11 @@ def is_hex_bytes(value, size):
     )
 
 
-# Deriving history makes a couple of hundred calls back to back. Free
-# endpoints throttle that, so leave a gap between them; the whole run still
-# finishes in well under a minute.
+# Retain pacing/retry settings, but every wire attempt during verification
+# shares the history's request, elapsed-time and response-size budgets.
 RPC_MIN_INTERVAL = float(os.environ.get("BASE_RPC_MIN_INTERVAL", "0.05"))
 _last_call = [0.0]
 _pace = [RPC_MIN_INTERVAL]      # grows if the endpoint pushes back
-# ~180 sequential calls: a shared CI egress IP gets throttled where a laptop
-# does not, so give up only after a few minutes rather than a few seconds.
 RPC_ATTEMPTS = int(os.environ.get("BASE_RPC_ATTEMPTS", "6"))
 
 
@@ -148,9 +133,12 @@ def _is_transient(error: dict) -> bool:
 
 
 def rpc_call(payload: dict, endpoint: str = None) -> dict:
+    budget = _active_budget.get()
+    if budget is not None:
+        budget.check()
     wait = _pace[0] - (time.monotonic() - _last_call[0])
     if wait > 0:
-        time.sleep(wait)
+        budget.pause(wait) if budget is not None else time.sleep(wait)
     _last_call[0] = time.monotonic()
 
     endpoint = endpoint or os.environ.get("BASE_RPC_URL")
@@ -169,8 +157,8 @@ def rpc_call(payload: dict, endpoint: str = None) -> dict:
         method="POST",
     )
 
-    # Deriving history is ~180 sequential calls. One blip must not discard the
-    # run, and throttling arrives in three different shapes: an HTTP status, a
+    # Retry transient transport failures within the shared run budget.
+    # Throttling arrives in three different shapes: an HTTP status, a
     # dropped connection, or — the one that is easy to miss — a perfectly
     # successful HTTP 200 whose JSON-RPC body carries an error. All three are
     # transient and all three are retried.
@@ -178,15 +166,22 @@ def rpc_call(payload: dict, endpoint: str = None) -> dict:
     cause = None          # keep the original exception so the traceback survives
     for attempt in range(RPC_ATTEMPTS):
         try:
-            with urlopen(http_request, timeout=30) as resp:
-                response = json.load(resp)
+            if budget is not None:
+                budget.attempt()
+            timeout = min(30, budget.deadline - time.monotonic()) if budget else 30
+            with urlopen(http_request, timeout=timeout) as resp:
+                cap = budget.response_bytes if budget else 8 * 1024**2
+                body = resp.read(cap + 1)
+                if len(body) > cap:
+                    raise SourceUnavailable("RPC response exceeds byte budget")
+                response = json.loads(body)
         except HTTPError as e:
             if e.code not in (429, 500, 502, 503, 504):
                 raise SourceUnavailable(f"RPC HTTP {e.code}") from e
             last, cause = f"RPC HTTP {e.code}", e
             if e.code == 429:
                 _pace[0] = min(max(_pace[0], 0.05) * 2, 1.0)
-        except (URLError, TimeoutError, json.JSONDecodeError) as e:
+        except (URLError, TimeoutError, json.JSONDecodeError, UnicodeError) as e:
             last, cause = f"RPC transport/JSON failure: {type(e).__name__}", e
         else:
             error = response.get("error") if isinstance(response, dict) else None
@@ -196,87 +191,233 @@ def rpc_call(payload: dict, endpoint: str = None) -> dict:
             _pace[0] = min(max(_pace[0], 0.05) * 2, 1.0)
 
         if attempt < RPC_ATTEMPTS - 1:
-            time.sleep(2 ** (attempt + 1))
+            delay = 2 ** (attempt + 1)
+            budget.pause(delay) if budget is not None else time.sleep(delay)
     raise SourceUnavailable(last or "unknown RPC error") from cause
 
-def derive_transfers(token: str, wallets):
-    """Every SRCMNT movement involving a project wallet, derived from the chain.
+_WIRE_RPC_CALL = rpc_call
 
-    Reading all 11M+ blocks since deployment to find a handful of transactions
-    is O(chain). This is O(our own activity):
 
-      1. A nonce is monotonic, so binary-searching `eth_getTransactionCount`
-         over block height finds every block in which a wallet sent a
-         transaction. Nothing hides there — unlike a balance, a nonce never
-         comes back down, so tokens sent out and returned are still two
-         separate increments.
-      2. Logs are read only for those blocks, plus the deployment block for
-         the mint, which no wallet signed.
+@dataclass
+class TransferHistory:
+    transfers: list
+    head: int
+    head_hash: str
+    covered_to: int
+    complete: bool = False
+    canonical: bool = False
+    error: str = ""
+    budget: object = None
 
-    A movement the wallet did not sign — a third party spending an allowance
-    via `transferFrom` — leaves the nonce untouched. That case is the exact
-    complement and is caught by the balance reconciliation in main().
+    @property
+    def block_ref(self):
+        return {"blockHash": self.head_hash, "requireCanonical": True}
 
-    Needs no API key, no account and no indexer.
+
+_active_budget = ContextVar("ledger_rpc_budget", default=None)
+
+
+class RpcBudget:
+    def __init__(self, requests=2048, seconds=300, response_bytes=8 * 1024**2):
+        if type(requests) is not int or requests <= 0:
+            raise SourceUnavailable("request budget must be a positive integer")
+        if not math.isfinite(seconds) or seconds <= 0:
+            raise SourceUnavailable("time budget must be finite and positive")
+        if type(response_bytes) is not int or response_bytes <= 0:
+            raise SourceUnavailable("response budget must be a positive integer")
+        self.limit = requests
+        self.used = 0
+        self.reserve = 0
+        self.deadline = time.monotonic() + seconds
+        self.response_bytes = response_bytes
+
+    def check(self):
+        if self.used >= self.limit - self.reserve:
+            raise SourceUnavailable("RPC request budget exhausted")
+        if time.monotonic() >= self.deadline:
+            raise SourceUnavailable("RPC time budget exhausted")
+
+    def attempt(self):
+        self.check()
+        self.used += 1
+
+    def pause(self, seconds):
+        if seconds >= self.deadline - time.monotonic():
+            raise SourceUnavailable("RPC time budget exhausted before retry")
+        time.sleep(seconds)
+
+    def call(self, rpc, payload, endpoint=None):
+        self.check()
+        before = self.used
+        token = _active_budget.set(self)
+        try:
+            # Tests and custom adapters may implement one logical request
+            # without entering rpc_call's wire-attempt loop.
+            return rpc(payload) if endpoint is None else rpc(payload, endpoint=endpoint)
+        finally:
+            _active_budget.reset(token)
+            if self.used == before and rpc is not _WIRE_RPC_CALL:
+                self.attempt()
+
+
+def _quantity(value):
+    if not isinstance(value, str) or re.fullmatch(
+            r"0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)", value) is None:
+        raise SourceUnavailable("invalid RPC quantity")
+    return int(value, 16)
+
+
+def _request(budget, method, params, endpoint=None):
+    return _rpc_result(budget.call(rpc_call, {
+        "jsonrpc": "2.0", "id": 1, "method": method, "params": params,
+    }, endpoint), method)
+
+
+def _header(budget, number, endpoint=None):
+    result = _request(budget, "eth_getBlockByNumber", [number, False], endpoint)
+    if number != "latest" and _quantity(result["number"]) != _quantity(number):
+        raise SourceUnavailable("RPC returned the wrong block height")
+    return result
+
+
+class HistoryConflict(SourceUnavailable):
+    """RPC event metadata contradicts this snapshot or earlier observations."""
+
+
+def _history_page(logs, token, start, end, head, head_hash):
+    page = {}
+    for raw in logs:
+        if not isinstance(raw, dict) or raw.get("removed", False) is not False:
+            raise SourceUnavailable("invalid or removed log")
+        if not is_hex_bytes(raw.get("address"), 20) or raw["address"].lower() != token.lower():
+            raise SourceUnavailable("log belongs to another token")
+        number = _quantity(raw.get("blockNumber"))
+        index = _quantity(raw.get("logIndex"))
+        tx_index = _quantity(raw.get("transactionIndex"))
+        if not start <= number <= end or not is_hex_bytes(raw.get("blockHash"), 32):
+            raise SourceUnavailable("log is outside the requested range or has no block hash")
+        topics = raw.get("topics")
+        if not isinstance(topics, list) or len(topics) != 3 or any(
+                not is_hex_bytes(t, 32) for t in topics):
+            raise SourceUnavailable("invalid ERC20 Transfer topics")
+        if topics[0].lower() != TRANSFER_TOPIC:
+            raise SourceUnavailable("unexpected event signature")
+        if any(int(t[2:26], 16) for t in topics[1:]):
+            raise SourceUnavailable("nonzero address padding in Transfer topic")
+        normalized = dict(raw, topics=[t.lower() for t in topics])
+        try:
+            decoded = decode_transfer(normalized)
+        except (ValueError, TypeError, KeyError) as exc:
+            raise SourceUnavailable(f"invalid Transfer: {exc}") from exc
+        decoded["transaction_hash"] = decoded["transaction_hash"].lower()
+        decoded["from"]["hash"] = decoded["from"]["hash"].lower()
+        decoded["to"]["hash"] = decoded["to"]["hash"].lower()
+        identity = (raw["blockHash"].lower(), index)
+        if number == head and raw["blockHash"].lower() != head_hash:
+            raise HistoryConflict("log at the fixed head has a different hash")
+        value = (number, tx_index, index, decoded)
+        if identity in page and page[identity] != value:
+            raise HistoryConflict("conflicting copies of one log")
+        page[identity] = value
+    return page
+
+
+def derive_transfers(token: str, wallets, chain_id=8453):
+    """Continuous token-log coverage, never wallet-nonce sampling.
+
+    Successful eth_getLogs responses are trusted RPC evidence, not receipt
+    proofs. Budgets or bad responses leave explicit incomplete coverage.
     """
-    def nonce_at(address, block):
-        return int(_rpc_result(
-            rpc_call({"jsonrpc": "2.0", "id": 1,
-                      "method": "eth_getTransactionCount",
-                      "params": [address, hex(block)]}),
-            "eth_getTransactionCount"), 16)
-
-    head = int(_rpc_result(
-        rpc_call({"jsonrpc": "2.0", "id": 1,
-                  "method": "eth_blockNumber", "params": []}),
-        "eth_blockNumber"), 16)
+    try:
+        span = int(os.environ.get("BASE_HISTORY_BLOCK_SPAN", "10000"))
+        log_cap = int(os.environ.get("BASE_HISTORY_MAX_LOGS_PER_PAGE", "10000"))
+        total_log_cap = int(os.environ.get("BASE_HISTORY_MAX_LOGS", "100000"))
+        budget = RpcBudget(
+            int(os.environ.get("BASE_HISTORY_MAX_REQUESTS", "2048")),
+            float(os.environ.get("BASE_HISTORY_TIMEOUT", "300")),
+            int(os.environ.get("BASE_HISTORY_MAX_RESPONSE_BYTES", str(8 * 1024**2))))
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise SourceUnavailable("invalid history budget configuration") from exc
+    if span <= 0 or log_cap <= 0 or total_log_cap <= 0 or not is_hex_bytes(token, 20):
+        raise SourceUnavailable("invalid token or history page limits")
+    if type(chain_id) is not int or chain_id <= 0 or any(
+            not is_hex_bytes(w, 20) for w in wallets):
+        raise SourceUnavailable("invalid chain or project wallet")
+    for endpoint in (None, LOGS_RPC_URL):
+        if _quantity(_request(budget, "eth_chainId", [], endpoint)) != chain_id:
+            raise SourceUnavailable("RPC chain ID differs from ledger.chain_id")
+    header = _header(budget, "latest")
+    head = _quantity(header["number"])
     if head < DEPLOYMENT_BLOCK:
         raise SourceUnavailable("chain head precedes the deployment block")
+    history = TransferHistory([], head, header["hash"].lower(),
+                              DEPLOYMENT_BLOCK - 1, budget=budget)
+    log_header = _header(budget, hex(head), LOGS_RPC_URL)
+    if log_header["hash"].lower() != history.head_hash:
+        raise SourceUnavailable("RPC endpoints disagree about the fixed head")
+    cursor = DEPLOYMENT_BLOCK
+    seen, number_hash, hash_number = {}, {}, {}
+    # Reserve both endpoint head checks. Even after a page exhausts its
+    # request allowance, earlier pages can still be confirmed or rejected.
+    budget.reserve = 2
+    try:
+        while cursor <= head:
+            end = min(head, cursor + span - 1)
+            logs = _request(budget, "eth_getLogs", [{
+                "address": token, "topics": [TRANSFER_TOPIC],
+                "fromBlock": hex(cursor), "toBlock": hex(end),
+            }], LOGS_RPC_URL)
+            # A provider cap may mean an incomplete array even with HTTP200.
+            # Do not accept a capped page as complete or advance its cursor.
+            if len(logs) >= log_cap:
+                raise SourceUnavailable("log page reached the configured result cap")
+            page = _history_page(logs, token, cursor, end, head, history.head_hash)
+            staged_numbers, staged_hashes = dict(number_hash), dict(hash_number)
+            added = []
+            for identity, value in page.items():
+                block_hash, _ = identity
+                number = value[0]
+                if ((number in staged_numbers and staged_numbers[number] != block_hash)
+                        or (block_hash in staged_hashes and staged_hashes[block_hash] != number)):
+                    raise HistoryConflict("conflicting block number/hash in history")
+                if identity in seen and seen[identity] != value:
+                    raise HistoryConflict("log identity changed between pages")
+                staged_numbers[number] = block_hash
+                staged_hashes[block_hash] = number
+                if identity not in seen:
+                    added.append(value)
+            if len(seen) + len(added) > total_log_cap:
+                raise SourceUnavailable("history log-memory budget exhausted")
+            seen.update(page)
+            number_hash, hash_number = staged_numbers, staged_hashes
+            history.transfers.extend(value[3] for value in sorted(added,
+                                        key=lambda value: value[:3]))
+            history.covered_to = end
+            cursor = end + 1
+        history.complete = True
+    except HistoryConflict as exc:
+        # A self-contradictory provider invalidates this run's observations;
+        # do not preserve a finding produced by the contradictory records.
+        history.error = str(exc)
+        return history
+    except SourceUnavailable as exc:
+        history.error = str(exc)
+    finally:
+        budget.reserve = 0
+    try:
+        for endpoint in (None, LOGS_RPC_URL):
+            current = _header(budget, hex(head), endpoint)
+            if current["hash"].lower() != history.head_hash:
+                raise SourceUnavailable("fixed-head hash changed during history scan")
+        history.canonical = True
+    except SourceUnavailable as exc:
+        history.complete = False
+        history.error = str(exc)
+    return history
 
-    blocks = {DEPLOYMENT_BLOCK}          # the mint itself
-    for address in sorted(wallets):
-        blocks.update(blocks_with_transactions(
-            address, DEPLOYMENT_BLOCK - 1, head, nonce_at))
 
-    transfers = []
-    spenders = set()
-    for block in sorted(blocks):
-        # One unfiltered read per block gets Transfers and Approvals together;
-        # filtering by topic would cost a second request for no benefit.
-        logs = _rpc_result(
-            rpc_call({"jsonrpc": "2.0", "id": 1, "method": "eth_getLogs",
-                      "params": [{"address": token,
-                                  "fromBlock": hex(block),
-                                  "toBlock": hex(block)}]},
-                     endpoint=LOGS_RPC_URL),
-            "eth_getLogs")
-        for log in logs:
-            if log.get("removed"):
-                continue             # dropped by a reorg; not part of history
-            topics = log.get("topics") or []
-            if not topics:
-                continue
-            if topics[0].lower() == TRANSFER_TOPIC.lower():
-                transfers.append(decode_transfer(log))
-            elif topics[0].lower() == APPROVAL_TOPIC.lower() and len(topics) == 3:
-                owner = "0x" + topics[1][-40:]
-                if owner.lower() in {w.lower() for w in wallets}:
-                    spenders.add("0x" + topics[2][-40:])
-    return transfers, spenders
-
-
-def fetch_transfers(token: str, wallets):
-    """The complete transfer history, derived from the chain.
-
-    There is one source and it is the chain. An indexer would answer faster,
-    but every one of them is somebody's service to withdraw — and a shortcut
-    that silently skips checks when it works is worse than no shortcut. If a
-    free, keyless indexer for Base reappears, it belongs here only if it
-    supplies the approvals too.
-    """
-    transfers, spenders = derive_transfers(token, wallets)
-    LIVE_SPENDERS.extend(spenders)
-    return transfers
+def fetch_transfers(token: str, wallets, chain_id=8453):
+    return derive_transfers(token, wallets, chain_id)
 
 
 def _srcmnt(wei, signed=False):
@@ -349,30 +490,33 @@ def _rpc_result(response, method):
         if not isinstance(result, list):
             raise SourceUnavailable(f"{method}: expected a list of logs")
 
-    elif method == "eth_blockNumber":
+    elif method in ("eth_blockNumber", "eth_chainId"):
         if (
             not isinstance(result, str)
             or re.fullmatch(r"0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)", result) is None
         ):
             raise SourceUnavailable(f"{method}: invalid block number")
 
+    elif method == "eth_getBlockByNumber":
+        if not isinstance(result, dict) or not is_hex_bytes(result.get("hash"), 32):
+            raise SourceUnavailable("invalid block header")
+        _quantity(result.get("number"))
+    elif method == "eth_getTransactionReceipt":
+        if result is not None and not isinstance(result, dict):
+            raise SourceUnavailable("invalid transaction receipt")
     else:
         raise SourceUnavailable(f"Unsupported method: {method}")
 
     return result
 
 
-def verify_balances_total_supply(ledger, token, rpc):
+def verify_balances_total_supply(ledger, token, rpc, block=None):
     wallets = ledger["project_wallets"]
     expected_state = calculate_expected_state(ledger)
 
-    response_block = rpc({
-        "jsonrpc": "2.0",
-        "method": "eth_blockNumber",
-        "params": [],
-        "id": 1
-    })
-    block = _rpc_result(response_block, "eth_blockNumber")
+    if block is None:
+        block = _rpc_result(rpc({"jsonrpc": "2.0", "method": "eth_blockNumber",
+                                 "params": [], "id": 1}), "eth_blockNumber")
 
     for name, address in wallets.items():
         address = address.lower()
@@ -451,12 +595,20 @@ def main() -> int:
     checked = 0
 
     try:
-        transfers = fetch_transfers(token, wallets)
+        history = fetch_transfers(token, wallets, ledger["chain_id"])
+        if not isinstance(history, TransferHistory):
+            raise SourceUnavailable("history source did not provide coverage metadata")
+        transfers = history.transfers
     except SourceUnavailable as e:
         print("COULD NOT VERIFY: no transfer history could be obtained.")
         print(f"  tried: {e}")
         print("  This is an infrastructure outage, not a finding about the ledger.")
         print("  The next successful run re-checks the full history.")
+        return 2
+
+    if not history.canonical:
+        print("COULD NOT VERIFY: fixed-head history was not confirmed canonical.")
+        print(f"  {history.error}")
         return 2
 
     for t in transfers:
@@ -501,64 +653,98 @@ def main() -> int:
         print("\nLEDGER entries not found on-chain:")
         print("\n".join(missing_onchain))
 
-    # Everything above checks movements we signed. A third party spending an
-    # allowance moves tokens without touching our nonce and without appearing
-    # in a block we looked at — the exact complement. A balance that the
-    # ledger cannot explain is what that looks like.
-    balance_violation = False
-    try:
-        verify_balances_total_supply(ledger, token, rpc_call)
-    except AccountingViolation as e:
-        ok = False
-        balance_violation = True
-        print("\nBALANCE UNEXPLAINED (a movement we did not sign):")
-        print(f"  {e}")
-    except SourceUnavailable as e:
-        # A violation already found is a finding; an outage must never
-        # downgrade it to "could not verify".
-        if not ok:
-            print(f"\nnote: balances unchecked ({e})")
-        else:
-            print("COULD NOT VERIFY: transfers matched, but balances could "
-                  f"not be read to rule out a movement we did not sign ({e}).")
-            return 2
+    print(f"history coverage: {DEPLOYMENT_BLOCK}..{history.covered_to} "
+          f"of fixed head {history.head} ({history.head_hash})")
+    if not history.complete:
+        print(f"history incomplete: {history.error}")
+        if unaccounted:
+            print("\nRESULT: FAIL — confirmed unaccounted movement in covered history.")
+            return 1
+        print("COULD NOT VERIFY: unobserved entries are not findings in partial history.")
+        return 2
 
-    # An outstanding allowance lets tokens leave without our wallet signing,
-    # in a block this derivation never reads. Claiming completeness while one
-    # is live would be claiming more than was checked.
-    outstanding = []
-    for spender in sorted(set(LIVE_SPENDERS)):
-        for name, wallet in ledger["project_wallets"].items():
+    # An absent entry can refer to a pending or post-snapshot transaction.
+    # Only a canonical receipt inside this covered interval makes absence a
+    # finding; null, future or unavailable receipts leave it inconclusive.
+    unresolved = False
+    missing_finding = False
+    def state_rpc(payload):
+        return history.budget.call(rpc_call, payload) if history.budget else rpc_call(payload)
+
+    if history.budget:
+        history.budget.reserve = 2  # final fixed-head checks cannot be spent on state/retries
+    if missing_onchain:
+        for tx in {key[0] for key in entries if entries[key] > observed[key]}:
             try:
-                raw = _rpc_result(rpc_call({
-                    "jsonrpc": "2.0", "id": 1, "method": "eth_call",
-                    "params": [{"to": token,
-                                "data": ALLOWANCE_SELECTOR
-                                        + wallet[2:].lower().zfill(64)
-                                        + spender[2:].lower().zfill(64)},
-                               "latest"]}), "allowance")
-            except SourceUnavailable as e:
-                # A missing sampled entry is not an observed violation, but
-                # an actual transfer or balance finding survives an outage.
-                if unaccounted or balance_violation:
-                    print(f"\nnote: allowance for {spender} unchecked ({e}).")
-                    return 1
-                print(f"\nCOULD NOT VERIFY: allowance for {spender} unreadable ({e}).")
-                return 2
-            if int(raw, 16):
-                outstanding.append((name, spender, int(raw, 16)))
+                receipt = _rpc_result(state_rpc({"jsonrpc": "2.0", "id": 1,
+                    "method": "eth_getTransactionReceipt", "params": [tx]}),
+                    "eth_getTransactionReceipt")
+                if receipt is None:
+                    unresolved = True
+                    continue
+                number = _quantity(receipt.get("blockNumber"))
+                if (not is_hex_bytes(receipt.get("transactionHash"), 32) or
+                        receipt["transactionHash"].lower() != tx or
+                        not is_hex_bytes(receipt.get("blockHash"), 32)):
+                    raise SourceUnavailable("receipt identity is invalid")
+                if not DEPLOYMENT_BLOCK <= number <= history.head:
+                    unresolved = True
+                    continue
+                header = _rpc_result(state_rpc({"jsonrpc": "2.0", "id": 1,
+                    "method": "eth_getBlockByNumber", "params": [hex(number), False]}),
+                    "eth_getBlockByNumber")
+                if (_quantity(header["number"]) != number or
+                        header["hash"].lower() != receipt["blockHash"].lower()):
+                    unresolved = True
+                else:
+                    missing_finding = True
+            except SourceUnavailable as exc:
+                print(f"note: missing-entry receipt unchecked ({exc})")
+                unresolved = True
+        ok = not (unaccounted or missing_finding)
 
-    if outstanding:
-        ok = False
-        print("\nOUTSTANDING ALLOWANCES (tokens can leave without us signing):")
-        for name, spender, amount in outstanding:
-            shown = "unlimited" if amount > 2**255 else f"{amount // DECIMALS:,}"
-            print(f"  {name} -> {spender} : {shown} SRCMNT")
-        print("  While these stand, transfers made by the spender do not appear")
-        print("  in any block this check reads. Revoke them or the history is")
-        print("  not provably complete.")
+    # A pending/future ledger item does not belong to the H-time state.
+    # Never compare its nonzero amount against H and call that a violation.
+    state_unavailable = False
+    if not unresolved:
+        try:
+            verify_balances_total_supply(ledger, token, state_rpc, history.block_ref)
+        except AccountingViolation as exc:
+            ok = False
+            print("\nBALANCE UNEXPLAINED:")
+            print(f"  {exc}")
+        except SourceUnavailable as exc:
+            state_unavailable = True
+            print(f"note: snapshot balances unchecked ({exc})")
 
-    print("\nRESULT:", "OK — every project-wallet movement is accounted for." if ok else "FAIL")
+    # Receipts and state must not introduce findings from a later fork.
+    # Confirm H again after those reads, including after state errors.
+    if history.budget:
+        history.budget.reserve = 0
+    try:
+        for endpoint in (None, LOGS_RPC_URL):
+            payload = {"jsonrpc": "2.0", "id": 1,
+                       "method": "eth_getBlockByNumber", "params": [hex(history.head), False]}
+            response = (history.budget.call(rpc_call, payload, endpoint)
+                        if history.budget else rpc_call(payload, endpoint=endpoint))
+            current = _rpc_result(response, "eth_getBlockByNumber")
+            if (_quantity(current["number"]) != history.head or
+                    current["hash"].lower() != history.head_hash):
+                raise SourceUnavailable("fixed-head identity changed after receipt/state reads")
+    except SourceUnavailable as exc:
+        print(f"COULD NOT VERIFY: final snapshot identity unavailable ({exc}).")
+        return 2
+
+    if unresolved and not unaccounted and not missing_finding:
+        print("COULD NOT VERIFY: ledger entries are outside or unresolved at the snapshot.")
+        return 2
+    if state_unavailable and ok:
+        print("COULD NOT VERIFY: no finding established and snapshot state unreadable.")
+        return 2
+    # Complete Transfer coverage includes transferFrom irrespective of current
+    # allowance. A live allowance is future authority, not past missing history.
+    print("\nRESULT:", "OK — ledger matches trusted RPC history at the fixed head."
+          if ok else "FAIL")
     return 0 if ok else 1
 
 
