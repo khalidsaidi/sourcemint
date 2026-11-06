@@ -55,3 +55,36 @@ Deployment artifacts:
 - Base Mainnet (8453): `0x914F6b6a0DaD39A3CB932dcf4D1af885C7c08EeB` (GA)
   - Verified: https://basescan.org/address/0x914f6b6a0dad39a3cb932dcf4d1af885c7c08eeb#code
 - Sepolia (11155111): `0x8c2B67EA395824Cc069F5e13b1d80E6016751a4A` (testnet)
+
+## Ledger verification coverage
+
+`python3 script/verify_ledger.py` scans this token's `Transfer` logs from its
+configured deployment block through a fixed head. Both configured RPC endpoints
+must report the ledger's chain ID and agree on that head. Balances and total
+supply are read using its canonical block hash. This covers delegated
+`transferFrom` movements even if balances later return to their original values
+and allowances are revoked. Current allowances are not evidence of missing
+historical transfers.
+
+The verifier trusts complete RPC log responses; this is an accounting check,
+not an independent cryptographic receipt proof. It keeps the existing scope:
+mint events and transfers out of project wallets must match the ledger.
+
+| Environment setting | Default | Purpose |
+| --- | --- | --- |
+| `BASE_HISTORY_BLOCK_SPAN` | `10000` | Maximum blocks per log request |
+| `BASE_HISTORY_MAX_REQUESTS` | `2048` | Shared request budget, including wire retries and state reads |
+| `BASE_HISTORY_TIMEOUT` | `300` | Deadline in seconds, checked around RPC operations and retry delays |
+| `BASE_HISTORY_MAX_RESPONSE_BYTES` | `8388608` | Maximum response body per request |
+| `BASE_HISTORY_MAX_LOGS_PER_PAGE` | `10000` | A page at this known/suspected result cap is incomplete |
+| `BASE_HISTORY_MAX_LOGS` | `100000` | Maximum retained events across accepted pages |
+
+Set the page span and result cap to the limits of your selected provider. A
+failed, malformed, capped or unfinished range returns exit 2 when no accounting
+violation has been established; it never falls back to nonce sampling or skips
+the failed range. An already-observed canonical unledgered movement remains
+exit 1 even if a later page fails. Exit 0 requires complete matching history and
+successful snapshot state checks. Pending or post-snapshot ledger transactions
+are inconclusive, rather than falsely reported absent. Larger histories may
+need different explicit budgets; these defaults are not provider capacity or
+runtime guarantees. Existing RPC pacing and retry settings still apply.

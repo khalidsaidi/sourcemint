@@ -61,9 +61,17 @@ def balances_for(led):
     """
     state = verifier.calculate_expected_state(led)
 
-    def rpc(payload):
+    def rpc(payload, endpoint=None):
         if payload["method"] == "eth_blockNumber":
             return {"jsonrpc": "2.0", "id": 1, "result": "0x1"}
+        if payload["method"] == "eth_getTransactionReceipt":
+            return {"jsonrpc": "2.0", "id": 1, "result": {
+                "transactionHash": payload["params"][0],
+                "blockNumber": hex(verifier.DEPLOYMENT_BLOCK),
+                "blockHash": "0x" + "ab" * 32}}
+        if payload["method"] == "eth_getBlockByNumber":
+            return {"jsonrpc": "2.0", "id": 1, "result": {
+                "number": payload["params"][0], "hash": "0x" + "ab" * 32}}
         data = payload["params"][0]["data"]
         if data.startswith("0x18160ddd"):
             value = state[1]
@@ -76,7 +84,9 @@ def balances_for(led):
 
 def run(transfers, led=None):
     led = led or ledger()
-    with (patch.object(verifier, "fetch_transfers", return_value=transfers),
+    with (patch.object(verifier, "fetch_transfers", return_value=verifier.TransferHistory(
+              transfers, verifier.DEPLOYMENT_BLOCK, "0x" + "ab" * 32,
+              verifier.DEPLOYMENT_BLOCK, complete=True, canonical=True)),
           patch.object(verifier, "rpc_call", side_effect=balances_for(led)),
           patch.object(Path, "read_text", return_value=json.dumps(led))):
         buf = io.StringIO()

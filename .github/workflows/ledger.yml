@@ -31,11 +31,11 @@ jobs:
       - name: Validate ledger shape and published figures
         run: |
           python3 script/ledger_schema.py
-          python3 -B -m unittest discover -s script -p 'test_ledger_schema.py'
+          python3 -B -m unittest discover -s script -p 'test_*.py'
       - name: Verify ledger against Base mainnet
         env:
-          # Nonces and balances. mainnet.base.org serves these and refuses
-          # eth_getLogs, so the log reads go elsewhere. Both public, no key.
+          # Snapshot headers and state use the primary RPC; token logs use
+          # the logs RPC. Both endpoints must report the configured chain.
           BASE_RPC_URL: https://mainnet.base.org
           BASE_LOGS_RPC_URL: https://base.gateway.tenderly.co
           # Shared runner egress gets throttled where a laptop does not.
@@ -49,9 +49,9 @@ jobs:
             echo "Ledger verified against Base mainnet."
             exit 0
           elif [ "$code" -eq 2 ]; then
-            # An indexer outage is not an accounting finding. Each run re-checks
-            # the full transfer history, so a deferred check loses nothing.
-            echo "::warning title=Ledger not verified::Transfer data source unreachable; deferring to the next run."
+            # Incomplete coverage is not an accounting finding. Every run
+            # starts again from deployment and reports its actual coverage.
+            echo "::warning title=Ledger not verified::History or snapshot could not be verified within source/resource limits; deferring."
             exit 0
           else
             echo "::error title=Accounting violation::A project-wallet movement is unaccounted for in rewards/ledger.json."
