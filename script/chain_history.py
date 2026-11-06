@@ -1,21 +1,11 @@
 #!/usr/bin/env python3
-"""Derive a project wallet's complete movement history from the chain.
+"""Find blocks containing transactions signed by a wallet.
 
-Scanning every block since deployment is O(chain). This is O(our activity):
-
-  * A nonce is monotonic. Binary-searching `eth_getTransactionCount` over
-    block height finds every block in which a wallet sent a transaction.
-    Nothing can hide there — unlike a balance, a nonce never comes back down,
-    so a transfer out and straight back is still two nonce increments.
-  * Logs are then read for those blocks alone. Eleven blocks, not eleven
-    million.
-
-What a nonce cannot see is a movement the wallet did not sign: a third party
-spending an allowance via `transferFrom`. That case is the exact complement —
-it changes the balance without touching the nonce — so `unexplained_balance`
-below catches it with two reads. Together they leave nothing uncovered.
-
-Stdlib only.
+Nonce changes do not discover token movements initiated by third parties.
+A transferFrom roundtrip can restore both balance and allowance, so these
+helpers are not a complete token-history source. The verifier scans token
+Transfer logs continuously instead. unexplained_balance compares state only;
+a zero difference does not establish movement-history completeness.
 """
 
 
@@ -45,10 +35,9 @@ def blocks_with_transactions(address, low, high, nonce_at):
 
 
 def unexplained_balance(expected_wei, actual_wei):
-    """What `transferFrom` would look like: a balance the ledger cannot explain.
+    """Return the expected-minus-observed balance difference in wei.
 
-    A nonce search accounts for everything the wallet sent. If the balance is
-    still short, tokens left without the wallet signing — someone spent an
-    allowance. Returns the shortfall in wei; zero means fully explained.
+    A zero state difference cannot prove that no intermediate movements
+    occurred. Use continuous token logs when verifying transfer history.
     """
     return expected_wei - actual_wei

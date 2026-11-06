@@ -1,9 +1,7 @@
-"""An outstanding allowance means the history cannot be called complete.
+"""Complete Transfer history covers delegated transfers independently of allowance.
 
-A spender holding an allowance can move tokens via `transferFrom`. That bumps
-no nonce on our side and lands in a block the derivation never reads, so it is
-invisible to every other check here. The verifier must not print "every
-movement is accounted for" while one is live.
+These state fixtures retain nonzero and revoked allowances to ensure that
+future spending authority does not become a false historical violation.
 """
 import contextlib
 import io
@@ -48,17 +46,21 @@ def run(allowance):
     def rpc(payload, endpoint=None):
         if payload["method"] == "eth_blockNumber":
             return {"jsonrpc": "2.0", "id": 1, "result": "0x1"}
+        if payload["method"] == "eth_getBlockByNumber":
+            return {"jsonrpc": "2.0", "id": 1, "result": {
+                "number": payload["params"][0], "hash": "0x" + "ab" * 32}}
         data = payload["params"][0]["data"]
         if data.startswith(verifier.ALLOWANCE_SELECTOR):
-            value = allowance
+            raise AssertionError("complete history must not query current allowance")
         elif data.startswith("0x18160ddd"):
             value = state[1]
         else:
             value = state[0].get("0x" + data[-40:], 0)
         return {"jsonrpc": "2.0", "id": 1, "result": "0x%064x" % value}
 
-    verifier.LIVE_SPENDERS[:] = [PERMIT2]
-    with (patch.object(verifier, "fetch_transfers", return_value=transfers()),
+    with (patch.object(verifier, "fetch_transfers", return_value=verifier.TransferHistory(
+              transfers(), verifier.DEPLOYMENT_BLOCK, "0x" + "ab" * 32,
+              verifier.DEPLOYMENT_BLOCK, complete=True, canonical=True)),
           patch.object(verifier, "rpc_call", side_effect=rpc),
           patch.object(Path, "read_text", return_value=json.dumps(led))):
         buf = io.StringIO()
@@ -68,28 +70,22 @@ def run(allowance):
 
 
 class Allowances(unittest.TestCase):
-    def tearDown(self):
-        verifier.LIVE_SPENDERS.clear()
-
-    def test_a_live_allowance_prevents_claiming_completeness(self):
+    def test_a_live_allowance_does_not_invalidate_complete_history(self):
         code, out = run(UNLIMITED)
-        self.assertEqual(code, 1, "cannot claim completeness while tokens can leave unseen")
-        self.assertIn("OUTSTANDING ALLOWANCES", out)
-        self.assertIn("RESULT: FAIL", out)
+        self.assertEqual(code, 0)
+        self.assertNotIn("OUTSTANDING ALLOWANCES", out)
 
-    def test_an_unlimited_allowance_is_named_as_such(self):
-        self.assertIn("unlimited", run(UNLIMITED)[1])
+    def test_an_unlimited_allowance_does_not_require_an_extra_history_gate(self):
+        self.assertIn("RESULT: OK", run(UNLIMITED)[1])
 
-    def test_a_small_allowance_still_counts(self):
-        code, out = run(5 * 10**18)
-        self.assertEqual(code, 1)
-        self.assertIn("5 SRCMNT", out)
+    def test_a_small_allowance_is_not_a_missing_transfer(self):
+        self.assertEqual(run(5 * 10**18)[0], 0)
 
     def test_a_revoked_allowance_does_not_block_the_verdict(self):
         code, out = run(0)
         self.assertEqual(code, 0)
         self.assertNotIn("OUTSTANDING", out)
-        self.assertIn("accounted for", out)
+        self.assertIn("RESULT: OK", out)
 
 
 if __name__ == "__main__":
