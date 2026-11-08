@@ -31,6 +31,11 @@ class AccountingOutages(unittest.TestCase):
             code = verifier.main()
         return code, output.getvalue()
 
+    def test_no_unaccounted_and_outage_is_ok(self):
+        code, output = self.run_verifier()
+        self.assertEqual(code, 0)
+        self.assertIn("RESULT: OK", output)
+
     def test_observed_unaccounted_transfer_survives_state_outage(self):
         observed = transfers()
         observed.append(dict(observed[-1], transaction_hash="0x" + "22" * 32))
