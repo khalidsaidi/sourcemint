@@ -591,10 +591,83 @@ def verify_balances_total_supply(ledger, token, rpc, block=None):
 
 
 
+def verify_entries_only(ledger, token) -> int:
+    """Confirm every ledger entry is real, without claiming the ledger is whole.
+
+    Proving nothing is *missing* means reading every block since deployment —
+    about 16,300 requests and over an hour against free endpoints, which is
+    not a per-pull-request cost. This answers the cheaper question instead:
+    does each entry name a real, successful transfer of that amount to that
+    address, and do the balances and total supply still add up?
+
+    It deliberately cannot detect an unledgered movement. Issue #10 was caused
+    by a check that could not see something and reported success anyway, so
+    this one names what it did not check, every time, and the full scan still
+    runs on main and on the weekly schedule.
+    """
+    wallets = {a.lower() for a in ledger["project_wallets"].values()}
+    bad = []
+    for e in ledger["entries"]:
+        tx = e["tx"].lower()
+        try:
+            receipt = _rpc_result(rpc_call({"jsonrpc": "2.0", "id": 1,
+                "method": "eth_getTransactionReceipt", "params": [tx]}),
+                "eth_getTransactionReceipt")
+        except SourceUnavailable as exc:
+            print(f"COULD NOT VERIFY: receipt for {tx} unreadable ({exc}).")
+            return 2
+        if receipt is None:
+            bad.append(f"  {tx}: no receipt on chain")
+            continue
+        if _quantity(receipt.get("status")) != 1:
+            bad.append(f"  {tx}: transaction failed on chain")
+            continue
+        frm = ZERO_ADDRESS if e["from"] == "mint" else e["from"].lower()
+        want = (frm, e["to"].lower(), amount_to_wei(e["amount"]))
+        found = False
+        for log in receipt.get("logs") or []:
+            if (log.get("address", "").lower() != token.lower()
+                    or len(log.get("topics") or []) != 3
+                    or log["topics"][0].lower() != TRANSFER_TOPIC):
+                continue
+            got = ("0x" + log["topics"][1][-40:].lower(),
+                   "0x" + log["topics"][2][-40:].lower(),
+                   int(log["data"], 16))
+            if got == want:
+                found = True
+                break
+        if not found:
+            bad.append(f"  {tx}: no matching SRCMNT transfer of {e['amount']} to {e['to']}")
+
+    print(f"ledger entries confirmed by receipt: {len(ledger['entries']) - len(bad)}"
+          f"/{len(ledger['entries'])}")
+    if bad:
+        print("\nLEDGER entries not confirmed on-chain:")
+        print("\n".join(bad))
+        print("\nRESULT: FAIL — a ledger entry does not match the chain.")
+        return 1
+    try:
+        verify_balances_total_supply(ledger, token, rpc_call)
+    except AccountingViolation as exc:
+        print(f"\nBALANCE UNEXPLAINED: {exc}")
+        print("RESULT: FAIL — balances do not match what the ledger implies.")
+        return 1
+    except SourceUnavailable as exc:
+        print(f"COULD NOT VERIFY: balance state unreadable ({exc}).")
+        return 2
+    print("balances and total supply reconcile with the ledger")
+    print("\nRESULT: ENTRIES OK — every entry is real and the balances add up.")
+    print("NOT CHECKED: whether anything is missing from the ledger. That needs"
+          " the full history scan, which runs on main and weekly.")
+    return 0
+
+
 def main() -> int:
     ledger = json.loads(LEDGER_PATH.read_text())
     token = ledger["token"]
     wallets = {a.lower() for a in ledger["project_wallets"].values()}
+    if os.environ.get("BASE_VERIFY_SCOPE", "full") == "entries":
+        return verify_entries_only(ledger, token)
     try:
         # A movement is (tx, from, to, amount). `from` is part of the identity:
         # without it an entry can name the wrong source wallet and still match.
