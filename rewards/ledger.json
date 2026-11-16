@@ -49,6 +49,14 @@
       "to": "0x7Be179c6Aa4cD1C4B3cDFbeF574c955DABa2c70c",
       "amount": "1000",
       "reason": "Contributor reward to @Chandain for pull request #8 (https://github.com/khalidsaidi/sourcemint/pull/8), 'Add fail-closed RPC fallback for ledger verification', merged 2026-10-26 as b75719f, closing issue #1: a keyless verification path that confirms each ledger entry by transaction receipt and reconciles project-wallet balances against total supply, so a Blockscout outage no longer stops the ledger from being verified. Amount set by the published tier for substantial work."
+    },
+    {
+      "tx": "0xa6a6fe5f7b77ed1d3679fd3672a6f81ef4e4be4e78ac9de6ddac28e7dac31777",
+      "date": "2026-11-16",
+      "from": "0x1af3cBcE941a2AC9D987E853b5385b05c405E16F",
+      "to": "0x7Be179c6Aa4cD1C4B3cDFbeF574c955DABa2c70c",
+      "amount": "1500",
+      "reason": "Contributor reward to @Chandain for issue #10 (https://github.com/khalidsaidi/sourcemint/issues/10), reporting that the verifier returned success on transfer history it had never read: history was indexed by wallet nonce, which only moves when a project wallet signs, so a delegated transferFrom and its return passed through blocks that were never examined and left no trace once the allowance was revoked. Reproduced by @gjwang and fixed in pull request #13 (https://github.com/khalidsaidi/sourcemint/pull/13), merged 2026-11-16, which replaced nonce sampling with a continuous scan to a fixed head. Recognition for finding a correctness defect in the script this project's claims rest on."
     }
   ]
 }
