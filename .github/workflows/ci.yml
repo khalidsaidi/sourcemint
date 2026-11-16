@@ -6,7 +6,11 @@ on:
   pull_request:
 
 jobs:
+  # Named for the status check main's branch protection requires. The
+  # duplicate workflow deleted in c11b779 carried this job name; removing it
+  # took the required context with it and nothing could merge afterwards.
   test:
+    name: Foundry project
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
