@@ -137,10 +137,11 @@ footer .mono{font-size:.78rem}
     <p>That proves every claim in the ledger is real. It does not, on its own, prove there is nothing <em>missing</em> from it.</p>
 
     <h2>Prove nothing is missing</h2>
-    <p>For that, the full history has to be derived from the chain rather than read from the ledger. Your browser can do that too. An account's nonce only ever increases, so searching it over block height finds every block in which a project wallet sent a transaction — nothing can hide there. The logs in those blocks are then read directly.</p>
-    <p>It takes a few hundred requests and under a minute. Same method the <a href="https://github.com/khalidsaidi/sourcemint/actions/workflows/ledger.yml">weekly check</a> runs.</p>
+    <p>For that the history has to be read from the chain rather than from the ledger — every block since the token was deployed, in order, with nothing skipped.</p>
+    <p>This page used to shortcut that by searching each wallet's nonce for the blocks it had acted in. That was wrong, and <a href="https://github.com/khalidsaidi/sourcemint/issues/10">Chandain and gjwang showed why</a>: a nonce only moves when <em>our</em> wallet signs something. Someone spending an approved allowance moves tokens without touching it, so those blocks were never read — and if the tokens came back and the approval was revoked, every trace was gone and the page reported success.</p>
+    <p>So it now scans continuously, and tells you exactly how far it got. Base produces blocks faster than a browser can read them, so you will not reach the head in one sitting — the <a href="https://github.com/khalidsaidi/sourcemint/actions/workflows/ledger.yml">weekly check</a> does the complete pass. Anything this finds is real; what it has not covered, it says it has not covered.</p>
     <p>
-      <button class="deep" id="deep">Derive the full history</button>
+      <button class="deep" id="deep">Scan the history</button>
     </p>
     <div class="bar" id="bar"><i id="barfill"></i></div>
     <p class="calls" id="calls"></p>
@@ -180,17 +181,49 @@ let calls = 0;
 const bump = () => { calls++; const el = document.getElementById("calls");
   if (el && el.textContent) el.textContent = el.textContent.replace(/\d+ requests/, calls + " requests"); };
 
-async function rpc(method, params, endpoint = RPC) {
-  bump();
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
-  });
-  if (!res.ok) throw new Error(method + ": HTTP " + res.status);
-  const body = await res.json();
-  if (body.error) throw new Error(method + ": " + (body.error.message || "RPC error"));
-  return body.result;
+// Public endpoints throttle a few hundred requests from one browser. A 429 is
+// "slow down", not "stop", so retry it and widen the gap for every later call
+// — otherwise the next few hundred hit the same wall.
+let pace = 40, lastCall = 0;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const transient = s => s === 429 || s === 500 || s === 502 || s === 503 || s === 504;
+
+async function rpc(method, params, endpoint = RPC, attempts = 5) {
+  let last = "";
+  for (let i = 0; i < attempts; i++) {
+    const gap = pace - (Date.now() - lastCall);
+    if (gap > 0) await sleep(gap);
+    lastCall = Date.now();
+    bump();
+    let res;
+    try {
+      res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
+      });
+    } catch (e) { last = method + ": " + e.message; await sleep(2 ** i * 250); continue; }
+
+    if (!res.ok) {
+      last = method + ": HTTP " + res.status;
+      if (!transient(res.status)) throw new Error(last);
+      pace = Math.min(pace * 2, 800);
+      await sleep(2 ** i * 250);
+      continue;
+    }
+    const body = await res.json();
+    if (body.error) {
+      const msg = String(body.error.message || "RPC error");
+      last = method + ": " + msg;
+      // a throttle can arrive inside a perfectly successful response
+      if (!/limit|rate|throttl|too many|capacity/i.test(msg)) throw new Error(last);
+      pace = Math.min(pace * 2, 800);
+      await sleep(2 ** i * 250);
+      continue;
+    }
+    return body.result;
+  }
+  throw new Error(last || method + ": gave up");
 }
 
 const short  = a => a.slice(0, 6) + "…" + a.slice(-4);
@@ -294,56 +327,42 @@ async function checkBalances(ledger) {
   return problems;
 }
 
-// ---- tier two: derive the whole history, so nothing can be missing ---------
-async function blocksWithTransactions(addr, low, high, onStep) {
-  const nonceAt = async b => parseInt(await rpc("eth_getTransactionCount", [addr, "0x" + b.toString(16)]), 16);
-  const found = [];
-  async function walk(lo, hi, nLo, nHi) {
-    if (nHi === nLo) return;
-    if (hi - lo <= 1) { for (let i = 0; i < nHi - nLo; i++) found.push(hi); onStep(); return; }
-    const mid = Math.floor((lo + hi) / 2), nMid = await nonceAt(mid);
-    await walk(lo, mid, nLo, nMid);
-    await walk(mid, hi, nMid, nHi);
-  }
-  await walk(low, high, await nonceAt(low), await nonceAt(high));
-  return found;
-}
+// ---- tier two: continuous coverage, honest about how far it got ------------
+// A nonce only moves when our wallet signs. A spender using an allowance moves
+// tokens without it, so nonce-based discovery never reads those blocks — the
+// bug Chandain and gjwang reported in issue #10. The only honest method is to
+// read every block in order and report exactly how far we got.
 
-async function deriveHistory(ledger, progress) {
-  const head = parseInt(await rpc("eth_blockNumber", []), 16);
-  const wallets = Object.values(ledger.project_wallets);
-  const expected = wallets.reduce((n, _) => n, 0);
+const SPAN = 1000;            // the largest range free endpoints serve
+const PAGE_BUDGET = 300;      // a demonstration a visitor will actually wait for
 
-  const blocks = new Set([DEPLOYMENT_BLOCK]);     // the mint, which no wallet signed
-  let done = 0;
-  const totals = [];
-  for (const w of wallets)
-    totals.push(parseInt(await rpc("eth_getTransactionCount", [w, "0x" + head.toString(16)]), 16));
-  const totalTx = totals.reduce((a, b) => a + b, 0);
-
-  for (const w of wallets) {
-    const bs = await blocksWithTransactions(w, DEPLOYMENT_BLOCK - 1, head,
-      () => progress(++done / Math.max(totalTx, 1) * 0.85));
-    bs.forEach(b => blocks.add(b));
-  }
-
+async function scanHistory(ledger, head, progress) {
   const token = ledger.token.toLowerCase();
   const moves = [];
-  const sorted = [...blocks].sort((a, b) => a - b);
-  let read = 0;
-  for (const b of sorted) {
-    const logs = await rpc("eth_getLogs",
-      [{ address: token, fromBlock: "0x" + b.toString(16), toBlock: "0x" + b.toString(16) }], LOGS_RPC);
+  let from = DEPLOYMENT_BLOCK, covered = from - 1, pages = 0;
+
+  while (from <= head && pages < PAGE_BUDGET) {
+    const to = Math.min(from + SPAN - 1, head);
+    const logs = await rpc("eth_getLogs", [{
+      address: token,
+      fromBlock: "0x" + from.toString(16),
+      toBlock: "0x" + to.toString(16),
+      topics: [TRANSFER_TOPIC]
+    }], LOGS_RPC);
     for (const l of logs) {
       if (l.removed) continue;                       // dropped by a reorg
-      if (!l.topics.length || l.topics[0].toLowerCase() !== TRANSFER_TOPIC || l.topics.length !== 3) continue;
-      const from = "0x" + l.topics[1].slice(26), to = "0x" + l.topics[2].slice(26);
-      const ours = from.toLowerCase() === ZERO || walletName(ledger, from);
-      if (ours) moves.push({ block: b, from, to, wei: BigInt(l.data), tx: l.transactionHash });
+      if (l.topics.length !== 3) continue;
+      const f = "0x" + l.topics[1].slice(26), t = "0x" + l.topics[2].slice(26);
+      // every movement out of a project wallet, whoever signed for it
+      if (f.toLowerCase() === ZERO || walletName(ledger, f))
+        moves.push({ block: parseInt(l.blockNumber, 16), from: f, to: t,
+                     wei: BigInt(l.data), tx: l.transactionHash });
     }
-    progress(0.85 + (++read / sorted.length) * 0.15);
+    covered = to; from = to + 1; pages++;
+    progress((covered - DEPLOYMENT_BLOCK) / Math.max(head - DEPLOYMENT_BLOCK, 1),
+             covered, head);
   }
-  return moves;
+  return { moves, covered, complete: covered >= head };
 }
 
 // ---- wiring ----------------------------------------------------------------
@@ -389,14 +408,19 @@ document.getElementById("deep").addEventListener("click", async function () {
   const btn = this, bar = document.getElementById("bar"), fill = document.getElementById("barfill");
   const callsEl = document.getElementById("calls"), table = document.getElementById("derived");
   const drows = document.getElementById("drows");
-  btn.disabled = true; btn.textContent = "Deriving…";
+  btn.disabled = true; btn.textContent = "Scanning…";
   bar.style.display = "block";
-  callsEl.textContent = "Searching block height by nonce — " + calls + " requests so far.";
+  callsEl.textContent = "Reading every block in order — " + calls + " requests so far.";
 
   let ledger;
   try {
     ledger = await (await fetch(LEDGER_URL, { cache: "no-store" })).json();
-    const moves = await deriveHistory(ledger, p => { fill.style.width = Math.min(p * 100, 100) + "%"; });
+    const head = parseInt(await rpc("eth_blockNumber", []), 16);
+    const { moves, covered, complete } = await scanHistory(ledger, head, (p, at, h) => {
+      fill.style.width = Math.min(p * 100, 100) + "%";
+      callsEl.textContent = "block " + at.toLocaleString() + " of " + h.toLocaleString()
+        + " — " + calls + " requests";
+    });
 
     // every movement the chain shows, against every movement the ledger claims
     const claimed = new Map();
@@ -424,23 +448,30 @@ document.getElementById("deep").addEventListener("click", async function () {
       drows.appendChild(tr);
     }
     table.style.display = "";
-    fill.style.width = "100%";
 
-    if (unaccounted === 0) {
-      verdict("ok", "Nothing is missing either",
-        moves.length + " project-wallet movements exist on Base since deployment, and every one is in the ledger. Derived in your browser from " + calls + " requests, with no indexer.");
-      callsEl.textContent = calls + " requests — full history derived from the chain.";
-    } else {
+    const span = (covered - DEPLOYMENT_BLOCK + 1).toLocaleString();
+    const whole = (head - DEPLOYMENT_BLOCK + 1).toLocaleString();
+    const pct = ((covered - DEPLOYMENT_BLOCK + 1) / (head - DEPLOYMENT_BLOCK + 1) * 100).toFixed(1);
+
+    // An unledgered movement that was actually seen is a finding either way.
+    // Not having seen one, over a range we did not finish, is not a result.
+    if (unaccounted > 0) {
       verdict("bad", unaccounted + " movement(s) are not in the ledger",
-        "The chain shows project funds moving with no recorded reason.");
-      callsEl.textContent = calls + " requests.";
+        "The chain shows project funds moving with no recorded reason. That stands regardless of how much of the history was covered.");
+    } else if (complete) {
+      verdict("ok", "Nothing is missing either",
+        moves.length + " project-wallet movements exist on Base since deployment, and every one is in the ledger. Read block by block in your browser, " + calls + " requests, no indexer.");
+    } else {
+      verdict("warn", "Covered " + pct + "% — nothing wrong so far",
+        "Read blocks up to " + covered.toLocaleString() + " of " + head.toLocaleString() + " (" + span + " of " + whole + "). Everything in that range is ledgered. The rest is simply unread, which is not the same as clean — the weekly check does the complete pass.");
     }
+    callsEl.textContent = calls + " requests — covered " + span + " of " + whole + " blocks.";
   } catch (err) {
-    verdict("warn", "Couldn't finish deriving the history",
+    verdict("warn", "Couldn't finish the scan",
       err.message + " — a provider limit or network problem, not an accounting finding.");
     callsEl.textContent = calls + " requests before it stopped.";
   } finally {
-    btn.textContent = "Derive the full history";
+    btn.textContent = "Scan the history";
     btn.disabled = false;
   }
 });

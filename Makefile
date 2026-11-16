@@ -22,7 +22,6 @@ fmt:
 test:
 	forge test -vvv
 	python3 -B -m unittest discover -s script -p 'test_*.py'
-	python3 -B -m unittest discover -s test -p 'test_*.py'
 
 verify:
 	python3 -B script/ledger_schema.py

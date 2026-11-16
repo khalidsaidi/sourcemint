@@ -6,73 +6,66 @@ reason. `script/verify_ledger.py` makes that claim falsifiable.
 
 ## The chain is the source
 
-History is derived from the chain itself, needing **no API key, no account and
+History is read from the chain itself, needing **no API key, no account and
 nobody's permission**. Any public Base RPC endpoint will serve it.
 
-Reading every block since deployment would be O(chain) — eleven million blocks
-to find eleven transactions. Instead it is O(our own activity):
+Every block from the token's deployment (41988939) to a fixed head is read in
+order, in `eth_getLogs` pages, with nothing skipped. The head is pinned at the
+start and re-checked at the end so a reorg cannot turn a later fork's state
+into a finding.
 
-1. A nonce is monotonic, so binary-searching `eth_getTransactionCount` over
-   block height finds every block in which a project wallet sent a
-   transaction. Nothing hides there: unlike a balance, a nonce never comes
-   back down, so tokens sent out and returned are still two increments.
-2. Logs are read for those blocks only, plus the deployment block for the
-   mint, which no wallet signed.
+That is deliberately the expensive option. It was not always.
 
-Measured against Base mainnet: **about 180 requests, under twenty seconds**,
-for the token's entire history. That cost grows with our activity, not with
-the chain's.
+## Why not a cheaper method
 
-## What a nonce cannot see
+Between 2026-10-29 and 2026-11-16 this script used wallet nonces as an index:
+a nonce is monotonic, so binary-searching `eth_getTransactionCount` finds every
+block in which a project wallet *signed* a transaction, and only those blocks
+need their logs read. About 180 requests instead of sixteen thousand.
 
-A third party spending an allowance via `transferFrom` moves tokens without
-our wallet signing anything. No nonce increments, and the transfer sits in a
-block this derivation never reads.
+It was wrong, and [#10](https://github.com/khalidsaidi/sourcemint/issues/10)
+is why. A nonce only moves when our wallet signs. A spender using an allowance
+moves tokens by `transferFrom` without touching it, so those blocks were never
+read. An allowance check was supposed to cover that case, but an allowance is
+only evidence while it is live: send tokens out, send them back, revoke the
+approval, and the balance nets to zero, the nonce never moved, the allowance
+reads zero, and the verifier reported success for history it had never seen.
 
-Two things address it.
+Reported by @Chandain, reproduced independently by @gjwang, fixed by @gjwang
+in [#11](https://github.com/khalidsaidi/sourcemint/pull/11). Both cases are
+permanent offline regressions in `script/test_history_scan.py`.
 
-`balanceOf` and `totalSupply` are reconciled against what the ledger implies,
-so an unexplained balance reveals a movement nobody here signed. That catches
-the ordinary case but not a round trip, where tokens leave and the same amount
-returns and the balance is unchanged.
+The lesson is narrower than "nonces are bad": the method sampled, and a sample
+cannot support a claim of completeness. Anything cheaper than reading every
+block has to prove it is not sampling.
 
-So the verifier also refuses to claim completeness while any allowance is
-outstanding. Granting an allowance is itself a transaction a project wallet
-signed, so it appears in a block already being read: the same single request
-per block returns `Approval` logs alongside `Transfer` logs, at no extra cost.
-Every spender ever approved is then checked with `allowance`, and a non-zero
-result fails the run with the spender named.
+## Three states, not two
 
-That is deliberately strict. A live allowance does not mean anything has gone
-wrong — it means this check cannot prove that nothing has, and saying so is
-the point.
+A single pass/fail flag conflates things that are not the same, which is how
+an outage used to downgrade an already-observed violation to "could not
+verify". They are now distinct:
 
-## There is no indexer
+- An unledgered movement that was actually observed is a **finding**. It stays
+  a finding whatever happens afterwards — a later page failing, a state read
+  timing out, the budget running out.
+- Coverage that did not complete is **inconclusive**. No verdict is available
+  about blocks that were not read.
+- A ledger entry simply absent from an incomplete range is **neither**. It may
+  be in a block not yet reached.
 
-There was one, and it is gone. `base.blockscout.com` returns HTTP 403 to
-programmatic requests, and no free keyless indexer for Base serves this —
-Routescan does not support the chain, BaseScan's v1 API is deprecated,
-Etherscan's v2 requires a paid plan for 8453, and Blockscout's MCP server runs
-on a shared credit allowance that is routinely exhausted.
+## What this costs, and for how long
 
-It was briefly kept as a shortcut. That was a mistake: approvals are only
-collected while reading the chain, so a run that took the shortcut skipped the
-completeness guard and said nothing about it. A faster path that quietly
-checks less is worse than no faster path.
+At 1,000 blocks per page — the largest range free keyless endpoints serve —
+the token's history is about 16,300 requests and an hour.
 
-If a free keyless indexer reappears it belongs here only if it supplies the
-`Approval` logs too.
+Base produces roughly 317,000 blocks a day, so that grows by about eight
+minutes of scanning every week. Extrapolated, a complete pass passes GitHub
+Actions' six-hour job limit within about a year of 2026-11-16.
 
-## Configuration
-
-| Variable | Default | Used for |
-|---|---|---|
-| `BASE_RPC_URL` | — | nonces, balances, block height |
-| `BASE_LOGS_RPC_URL` | `base.gateway.tenderly.co` | the handful of single-block log reads |
-
-Two endpoints because no single free one serves both: `mainnet.base.org`
-answers nonces and balances but refuses `eth_getLogs` entirely. Both are
-public and need no key.
+This is a known limit, not a solved problem. When it binds, the options are a
+keyed endpoint with larger ranges, or a committed checkpoint of the last
+verified block and its hash — which trades "every run re-derives everything"
+for "every run trusts the last one", and should not be done quietly.
 
 ## Verdicts
 

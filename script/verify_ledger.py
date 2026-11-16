@@ -329,12 +329,20 @@ def derive_transfers(token: str, wallets, chain_id=8453):
     proofs. Budgets or bad responses leave explicit incomplete coverage.
     """
     try:
-        span = int(os.environ.get("BASE_HISTORY_BLOCK_SPAN", "10000"))
+        # 1,000 is the largest eth_getLogs range the free, keyless endpoints
+        # allow; 10,000 is refused outright ("Block range too large: maximum
+        # 1000 blocks without an access key"), which would leave every run
+        # covering zero blocks and reporting itself inconclusive forever.
+        span = int(os.environ.get("BASE_HISTORY_BLOCK_SPAN", "1000"))
         log_cap = int(os.environ.get("BASE_HISTORY_MAX_LOGS_PER_PAGE", "10000"))
         total_log_cap = int(os.environ.get("BASE_HISTORY_MAX_LOGS", "100000"))
+        # Covering the token's whole life takes one request per span. That is
+        # about 16,300 today and grows with the chain, so the budget has to
+        # exceed it or the run is honest-but-useless. See docs/verification.md
+        # on why this does not scale indefinitely.
         budget = RpcBudget(
-            int(os.environ.get("BASE_HISTORY_MAX_REQUESTS", "2048")),
-            float(os.environ.get("BASE_HISTORY_TIMEOUT", "300")),
+            int(os.environ.get("BASE_HISTORY_MAX_REQUESTS", "30000")),
+            float(os.environ.get("BASE_HISTORY_TIMEOUT", "5400")),
             int(os.environ.get("BASE_HISTORY_MAX_RESPONSE_BYTES", str(8 * 1024**2))))
     except (TypeError, ValueError, OverflowError) as exc:
         raise SourceUnavailable("invalid history budget configuration") from exc
