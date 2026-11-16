@@ -228,13 +228,22 @@ class RpcBudget:
         self.limit = requests
         self.used = 0
         self.reserve = 0
+        # Seconds held back the same way `reserve` holds back requests. The
+        # canonical head re-check is mandatory and costs time as well as
+        # requests, so a scan that spends the clock down to the deadline
+        # leaves it unaffordable and the run can never confirm. Both reserves
+        # are lifted together once the scan is done.
+        self.reserve_seconds = 0.0
         self.deadline = time.monotonic() + seconds
         self.response_bytes = response_bytes
+
+    def remaining(self):
+        return self.deadline - self.reserve_seconds - time.monotonic()
 
     def check(self):
         if self.used >= self.limit - self.reserve:
             raise SourceUnavailable("RPC request budget exhausted")
-        if time.monotonic() >= self.deadline:
+        if self.remaining() <= 0:
             raise SourceUnavailable("RPC time budget exhausted")
 
     def attempt(self):
@@ -242,7 +251,7 @@ class RpcBudget:
         self.used += 1
 
     def pause(self, seconds):
-        if seconds >= self.deadline - time.monotonic():
+        if seconds >= self.remaining():
             raise SourceUnavailable("RPC time budget exhausted before retry")
         time.sleep(seconds)
 
@@ -367,7 +376,10 @@ def derive_transfers(token: str, wallets, chain_id=8453):
     seen, number_hash, hash_number = {}, {}, {}
     # Reserve both endpoint head checks. Even after a page exhausts its
     # request allowance, earlier pages can still be confirmed or rejected.
+    # The same has to hold for the clock, or a scan that runs to the deadline
+    # leaves the mandatory re-check unaffordable and nothing can ever confirm.
     budget.reserve = 2
+    budget.reserve_seconds = float(os.environ.get("BASE_HISTORY_RESERVE_SECONDS", "60"))
     try:
         while cursor <= head:
             end = min(head, cursor + span - 1)
@@ -412,6 +424,7 @@ def derive_transfers(token: str, wallets, chain_id=8453):
         history.error = str(exc)
     finally:
         budget.reserve = 0
+        budget.reserve_seconds = 0.0
     try:
         for endpoint in (None, LOGS_RPC_URL):
             current = _header(budget, hex(head), endpoint)
