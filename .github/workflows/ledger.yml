@@ -18,6 +18,7 @@ on:
 jobs:
   verify:
     name: Verify on-chain accounting
+    timeout-minutes: 150
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -40,6 +41,10 @@ jobs:
           BASE_LOGS_RPC_URL: https://base.gateway.tenderly.co
           # Shared runner egress gets throttled where a laptop does not.
           BASE_RPC_MIN_INTERVAL: "0.25"
+          # A complete pass is ~16,300 pages since deployment, so at the pace
+          # above it needs well over an hour and grows with the chain. Give it
+          # room rather than let every run defer without verifying anything.
+          BASE_HISTORY_TIMEOUT: "7200"
         run: |
           set +e
           python3 script/verify_ledger.py

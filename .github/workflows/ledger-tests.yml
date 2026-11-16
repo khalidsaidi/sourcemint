@@ -17,7 +17,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Test receipt, balance, and supply verification
+      # Every Python suite lives in script/; test/ holds Solidity only.
+      - name: Python tests
         run: python3 -B -m unittest discover -s script -p 'test_*.py' -v
-      - name: Test verifier integration
-        run: python3 -B -m unittest discover -s test -p 'test_*.py' -v
