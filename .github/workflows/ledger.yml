@@ -33,8 +33,14 @@ jobs:
         run: |
           python3 script/ledger_schema.py
           python3 -B -m unittest discover -s script -p 'test_*.py'
+      # Proving nothing is MISSING means reading all ~16.3M blocks since
+      # deployment: over an hour against free endpoints, and growing. That is
+      # not a per-pull-request cost, so a PR confirms every entry is real and
+      # the balances add up (about a second), and the full scan runs on main
+      # and on the weekly schedule. The fast mode prints what it did not check.
       - name: Verify ledger against Base mainnet
         env:
+          BASE_VERIFY_SCOPE: ${{ github.event_name == 'pull_request' && 'entries' || 'full' }}
           # Snapshot headers and state use the primary RPC; token logs use
           # the logs RPC. Both endpoints must report the configured chain.
           BASE_RPC_URL: https://mainnet.base.org
