@@ -17,7 +17,7 @@ The two causes are now distinguished:
 """
 import unittest
 
-from test_history_scan import ALICE, CHARLIE, Node, event, run
+from test_history_scan import ALICE, CHARLIE, Node, block_hash, event, run
 
 import verify_ledger as v
 
@@ -39,6 +39,19 @@ class HeadOutage(Node):
         return super().__call__(payload, endpoint)
 
 
+class LateConflict(Node):
+    """An unledgered movement committed by an early page, then a later page
+    binds a block hash already bound to a different number: the source
+    contradicting itself after the finding is in hand."""
+
+    def __init__(self, **kw):
+        super().__init__(head=602, **kw)
+        self.events += [event(200, ALICE, CHARLIE, 40 * 10**18)]
+        clash = event(500, ALICE, CHARLIE, 1)
+        clash["blockHash"] = block_hash(200)
+        self.events.append(clash)
+
+
 class HeadReorg(Node):
     """The same observation, but the head genuinely changed under us."""
 
@@ -58,7 +71,17 @@ class CanonicalOutage(unittest.TestCase):
     def test_a_changed_head_still_invalidates_the_observation(self):
         code, output = run(HeadReorg())
         self.assertEqual(code, 2, output)
-        self.assertIn("no longer canonical", output)
+        self.assertIn("replaced", output)
+        self.assertNotIn("RESULT: FAIL", output)
+
+    def test_a_self_contradictory_source_is_not_an_outage(self):
+        """A conflict returns early and never reaches the head re-check, so it
+        looks exactly like an unreadable head. Inferring "outage" from the
+        absence of a known reorg turned contradictory records into a
+        violation. The cause has to be stated, never deduced."""
+        code, output = run(LateConflict(), BASE_HISTORY_BLOCK_SPAN=100)
+        self.assertEqual(code, 2, output)
+        self.assertIn("contradict", output)
         self.assertNotIn("RESULT: FAIL", output)
 
     def test_an_unreadable_head_without_a_violation_stays_inconclusive(self):
@@ -70,11 +93,16 @@ class CanonicalOutage(unittest.TestCase):
         self.assertEqual(code, 2, output)
         self.assertNotIn("RESULT: FAIL", output)
 
-    def test_the_cause_is_named_in_the_output(self):
+    def test_each_cause_is_named_and_they_differ(self):
         _, outage = run(HeadOutage())
         _, reorg = run(HeadReorg())
-        self.assertIn("outage", outage)
+        _, clash = run(LateConflict(), BASE_HISTORY_BLOCK_SPAN=100)
+        self.assertIn("could not be completed", outage)
         self.assertIn("replaced", reorg)
+        self.assertIn("contradict", clash)
+        # the three verdicts must not be interchangeable
+        self.assertNotIn("replaced", outage)
+        self.assertNotIn("contradict", outage)
 
 
 if __name__ == "__main__":
