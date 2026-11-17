@@ -210,6 +210,13 @@ class TransferHistory:
     # opposed to simply not having been able to re-read it. A reorg
     # invalidates observations tied to that head; an outage does not.
     head_changed: bool = False
+    # Set by every cause that makes this run's observations untrustworthy, as
+    # distinct from merely unconfirmed. A finding survives a source we could
+    # not READ; it must not survive a source that CONTRADICTED itself. Any
+    # future invalidating cause sets this rather than being inferred from the
+    # absence of the others -- inferring it is what let a self-contradictory
+    # provider be mistaken for an outage and produce a violation.
+    invalidated: bool = False
     error: str = ""
     budget: object = None
 
@@ -423,6 +430,7 @@ def derive_transfers(token: str, wallets, chain_id=8453):
         # A self-contradictory provider invalidates this run's observations;
         # do not preserve a finding produced by the contradictory records.
         history.error = str(exc)
+        history.invalidated = True
         return history
     except SourceUnavailable as exc:
         history.error = str(exc)
@@ -434,6 +442,7 @@ def derive_transfers(token: str, wallets, chain_id=8453):
             current = _header(budget, hex(head), endpoint)
             if current["hash"].lower() != history.head_hash:
                 history.head_changed = True
+                history.invalidated = True
                 raise SourceUnavailable("fixed-head hash changed during history scan")
         history.canonical = True
     except SourceUnavailable as exc:
@@ -755,20 +764,21 @@ def main() -> int:
 
     print(f"history coverage: {DEPLOYMENT_BLOCK}..{history.covered_to} "
           f"of fixed head {history.head} ({history.head_hash})")
-    if history.head_changed:
-        # The chain moved under the snapshot. Observations are tied to a head
-        # that is no longer canonical, so they are not evidence about the
-        # current chain -- unlike an unreadable endpoint, this is positive
-        # proof the basis is gone.
-        print("COULD NOT VERIFY: the fixed head is no longer canonical.")
+    if history.invalidated:
+        # Either the chain moved under the snapshot or the source contradicted
+        # itself. Both destroy the basis of what was observed, which an
+        # unreadable endpoint does not.
+        print("COULD NOT VERIFY: this run's observations are not evidence.")
         print(f"  {history.error}")
-        print("  Observations are tied to a head the chain has replaced.")
+        print("  Observations are tied to a head the chain has replaced."
+              if history.head_changed else
+              "  The source served records that contradict each other.")
         return 2
     if not history.canonical and unaccounted:
         print(f"history not re-confirmed: {history.error}")
         print("\nRESULT: FAIL — unaccounted movement observed in complete, "
-              "matching history; the head could not be re-read, which is an "
-              "outage and not a reason to withhold it.")
+              "matching history; the check that would have re-confirmed it "
+              "could not be completed, which is not a reason to withhold it.")
         return 1
     if not history.complete:
         print(f"history incomplete: {history.error}")
