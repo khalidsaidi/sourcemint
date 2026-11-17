@@ -206,6 +206,10 @@ class TransferHistory:
     covered_to: int
     complete: bool = False
     canonical: bool = False
+    # Positive evidence that the pinned head is no longer canonical, as
+    # opposed to simply not having been able to re-read it. A reorg
+    # invalidates observations tied to that head; an outage does not.
+    head_changed: bool = False
     error: str = ""
     budget: object = None
 
@@ -429,6 +433,7 @@ def derive_transfers(token: str, wallets, chain_id=8453):
         for endpoint in (None, LOGS_RPC_URL):
             current = _header(budget, hex(head), endpoint)
             if current["hash"].lower() != history.head_hash:
+                history.head_changed = True
                 raise SourceUnavailable("fixed-head hash changed during history scan")
         history.canonical = True
     except SourceUnavailable as exc:
@@ -700,10 +705,11 @@ def main() -> int:
         print("  The next successful run re-checks the full history.")
         return 2
 
-    if not history.canonical:
-        print("COULD NOT VERIFY: fixed-head history was not confirmed canonical.")
-        print(f"  {history.error}")
-        return 2
+    # A failure to re-confirm the head is NOT decided here. Returning early
+    # discards an unledgered movement that was already observed, which is the
+    # defect of issue #10 at a different gate: the run goes quiet about real
+    # evidence because a later read failed. The decision is made below, once
+    # the observations exist and the cause is known.
 
     for t in transfers:
         frm = t["from"]["hash"].lower()
@@ -749,6 +755,21 @@ def main() -> int:
 
     print(f"history coverage: {DEPLOYMENT_BLOCK}..{history.covered_to} "
           f"of fixed head {history.head} ({history.head_hash})")
+    if history.head_changed:
+        # The chain moved under the snapshot. Observations are tied to a head
+        # that is no longer canonical, so they are not evidence about the
+        # current chain -- unlike an unreadable endpoint, this is positive
+        # proof the basis is gone.
+        print("COULD NOT VERIFY: the fixed head is no longer canonical.")
+        print(f"  {history.error}")
+        print("  Observations are tied to a head the chain has replaced.")
+        return 2
+    if not history.canonical and unaccounted:
+        print(f"history not re-confirmed: {history.error}")
+        print("\nRESULT: FAIL — unaccounted movement observed in complete, "
+              "matching history; the head could not be re-read, which is an "
+              "outage and not a reason to withhold it.")
+        return 1
     if not history.complete:
         print(f"history incomplete: {history.error}")
         if unaccounted:
